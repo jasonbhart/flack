@@ -22,6 +22,12 @@ Thumbs.db
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# IDE/Editor
 .claude
 .spec-workflow
 .vscode
+.idea
