@@ -78,9 +78,34 @@ The compiled binary is located at:
 - **Windows:** `src-tauri/target/release/bundle/msi/Bolt_0.1.0_x64_en-US.msi`
 - **Linux:** `src-tauri/target/release/bundle/appimage/Bolt_0.1.0_amd64.AppImage`
 
+### Linux System Dependencies
+
+On Ubuntu/Debian, install required system libraries:
+
+```bash
+sudo apt-get update && sudo apt-get install -y \
+  libwebkit2gtk-4.1-dev \
+  libgtk-3-dev \
+  libayatana-appindicator3-dev \
+  librsvg2-dev
+```
+
+On Fedora:
+
+```bash
+sudo dnf install webkit2gtk4.1-devel gtk3-devel libappindicator-gtk3-devel librsvg2-devel
+```
+
+On Arch:
+
+```bash
+sudo pacman -S webkit2gtk-4.1 gtk3 libayatana-appindicator librsvg
+```
+
 ### Common Issues
 
 - **"edition2024" error:** Your Rust version is outdated. Run `rustup update stable`
+- **"gobject-2.0 not found" error:** Missing Linux system dependencies. See [Linux System Dependencies](#linux-system-dependencies) above
 - **Tauri window blank:** Ensure `npm run dev` is running first
 
 ## Testing
