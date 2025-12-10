@@ -1,27 +1,50 @@
 <script lang="ts">
   interface TypingUser {
-    userId: string;
-    tempUserId?: string;
+    oduserId: string;
+    sessionId: string;
     displayName: string;
+    updated: number;
   }
+
+  const TYPING_TIMEOUT = 3000; // 3 seconds
 
   let {
     typingUsers,
-    currentTempUserId,
+    currentSessionId,
   }: {
     typingUsers: TypingUser[];
-    currentTempUserId?: string;
+    currentSessionId?: string;
   } = $props();
 
-  // Filter out current user by tempUserId (local UUID) for accurate self-filtering
-  const filteredUsers = $derived(
-    typingUsers.filter((u) => u.tempUserId !== currentTempUserId)
+  // Client-side staleness filtering - removes users who stopped typing > 3s ago
+  const activeTyping = $derived(
+    typingUsers.filter((u) => Date.now() - u.updated < TYPING_TIMEOUT)
   );
 
+  // Filter out current session and deduplicate by oduserId
+  // This handles multi-device: excludes all sessions from current device
+  const filteredUsers = $derived(() => {
+    // First filter out current session
+    const otherSessions = activeTyping.filter(
+      (u) => u.sessionId !== currentSessionId
+    );
+
+    // Deduplicate by oduserId (same user on multiple devices shows once)
+    const userMap = new Map<string, TypingUser>();
+    for (const user of otherSessions) {
+      const existing = userMap.get(user.oduserId);
+      if (!existing || user.updated > existing.updated) {
+        userMap.set(user.oduserId, user);
+      }
+    }
+    return Array.from(userMap.values());
+  });
+
   const displayText = $derived.by(() => {
-    if (filteredUsers.length === 0) return null;
-    if (filteredUsers.length === 1) return `${filteredUsers[0].displayName} is typing`;
-    return `${filteredUsers.length} users are typing`;
+    const users = filteredUsers();
+    if (users.length === 0) return null;
+    if (users.length === 1) return `${users[0].displayName} is typing`;
+    return `${users.length} users are typing`;
   });
 </script>
 

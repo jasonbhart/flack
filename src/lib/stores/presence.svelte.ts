@@ -4,13 +4,13 @@ type HeartbeatMutationFn = (args: {
   channelId: Id<"channels">;
   type: "online" | "typing";
   userName?: string;
-  tempUserId?: string;
+  sessionId: string;
 }) => Promise<unknown>;
 
 class PresenceManager {
   currentChannelId = $state<Id<"channels"> | null>(null);
   isTyping = $state(false);
-  private tempUserId: string;
+  private sessionId: string;
   private userName: string;
   private heartbeatMutation: HeartbeatMutationFn | null = null;
   private intervalId: ReturnType<typeof setInterval> | null = null;
@@ -18,24 +18,25 @@ class PresenceManager {
 
   constructor() {
     if (typeof window !== "undefined") {
-      // Generate a unique ID for this session
-      this.tempUserId =
-        localStorage.getItem("bolt-temp-user-id") ??
+      // Generate a unique session ID for this device/tab
+      // Stored in localStorage so it persists across page reloads but is unique per browser
+      this.sessionId =
+        localStorage.getItem("bolt-session-id") ??
         (() => {
           const id = crypto.randomUUID();
-          localStorage.setItem("bolt-temp-user-id", id);
+          localStorage.setItem("bolt-session-id", id);
           return id;
         })();
       // Get or generate username
       this.userName =
         localStorage.getItem("bolt-user-name") ??
         (() => {
-          const name = `User-${this.tempUserId.slice(0, 4)}`;
+          const name = `User-${this.sessionId.slice(0, 4)}`;
           localStorage.setItem("bolt-user-name", name);
           return name;
         })();
     } else {
-      this.tempUserId = "server";
+      this.sessionId = "server";
       this.userName = "Anonymous";
     }
   }
@@ -59,7 +60,7 @@ class PresenceManager {
         channelId: this.currentChannelId,
         type: this.isTyping ? "typing" : "online",
         userName: this.userName,
-        tempUserId: this.tempUserId,
+        sessionId: this.sessionId,
       });
     } catch {
       // Silently fail heartbeats
@@ -108,8 +109,8 @@ class PresenceManager {
     }
   }
 
-  getTempUserId() {
-    return this.tempUserId;
+  getSessionId() {
+    return this.sessionId;
   }
 }
 

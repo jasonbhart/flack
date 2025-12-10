@@ -6,53 +6,50 @@ export const heartbeat = mutation({
     channelId: v.id("channels"),
     type: v.union(v.literal("online"), v.literal("typing")),
     userName: v.optional(v.string()),
-    tempUserId: v.optional(v.string()),
+    sessionId: v.string(), // Required: unique per device/tab
   },
   handler: async (ctx, args) => {
-    // For now, use tempUserId until auth is implemented
-    const uniqueId = args.tempUserId ?? "anonymous";
     const userName = args.userName ?? "Anonymous";
 
-    // Create a temporary user record if needed (moved before presence lookup for proper upsert)
+    // Create a temporary user record if needed
     let user = await ctx.db
       .query("users")
-      .filter((q) => q.eq(q.field("email"), `${uniqueId}@temp.local`))
+      .filter((q) => q.eq(q.field("email"), `${args.sessionId}@temp.local`))
       .first();
 
     let userIdToUse;
     if (!user) {
       userIdToUse = await ctx.db.insert("users", {
         name: userName,
-        email: `${uniqueId}@temp.local`,
+        email: `${args.sessionId}@temp.local`,
       });
     } else {
       userIdToUse = user._id;
     }
 
-    // Check for existing presence record using by_user index for O(1) lookup
+    // Check for existing presence record by sessionId (supports multi-device)
     const existing = await ctx.db
       .query("presence")
-      .withIndex("by_user", (q) => q.eq("userId", userIdToUse))
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .first();
 
     const now = Date.now();
 
     if (existing) {
-      // Update existing record (include user to handle name changes)
+      // Update existing session record
       await ctx.db.patch(existing._id, {
         channelId: args.channelId,
         updated: now,
         data: { type: args.type },
-        user: userName,
-        tempUserId: uniqueId,
+        displayName: userName,
       });
       return existing._id;
     } else {
-      // Insert new presence record
+      // Insert new presence record for this session
       const presenceId = await ctx.db.insert("presence", {
         userId: userIdToUse,
-        tempUserId: uniqueId,
-        user: userName,
+        sessionId: args.sessionId,
+        displayName: userName,
         channelId: args.channelId,
         updated: now,
         data: { type: args.type },
@@ -65,19 +62,19 @@ export const heartbeat = mutation({
 export const listOnline = query({
   args: { channelId: v.id("channels") },
   handler: async (ctx, args) => {
-    const cutoff = Date.now() - 60000; // 60 seconds
-
+    // Return all presence records for channel - client handles staleness filtering
+    // This avoids stale data issues with Date.now() in queries
     const presenceRecords = await ctx.db
       .query("presence")
-      .withIndex("by_channel_updated", (q) =>
-        q.eq("channelId", args.channelId).gt("updated", cutoff)
-      )
+      .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
       .collect();
 
     return presenceRecords.map((p) => ({
-      userId: p.userId.toString(),
-      tempUserId: p.tempUserId,
-      displayName: p.user,
+      oduserId: p.userId.toString(),
+      sessionId: p.sessionId,
+      displayName: p.displayName,
+      updated: p.updated,
+      type: p.data.type,
     }));
   },
 });
@@ -85,20 +82,18 @@ export const listOnline = query({
 export const listTyping = query({
   args: { channelId: v.id("channels") },
   handler: async (ctx, args) => {
-    const cutoff = Date.now() - 3000; // 3 seconds
-
+    // Return all typing records for channel - client handles staleness filtering
     const presenceRecords = await ctx.db
       .query("presence")
-      .withIndex("by_channel_updated", (q) =>
-        q.eq("channelId", args.channelId).gt("updated", cutoff)
-      )
+      .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
       .filter((q) => q.eq(q.field("data.type"), "typing"))
       .collect();
 
     return presenceRecords.map((p) => ({
-      userId: p.userId.toString(),
-      tempUserId: p.tempUserId,
-      displayName: p.user,
+      oduserId: p.userId.toString(),
+      sessionId: p.sessionId,
+      displayName: p.displayName,
+      updated: p.updated,
     }));
   },
 });

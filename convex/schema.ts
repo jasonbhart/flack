@@ -36,11 +36,11 @@ export default defineSchema({
     .index("by_channel", ["channelId"])
     .index("by_client_mutation_id", ["clientMutationId"]),
 
-  // Presence table for online/typing status
+  // Presence table for online/typing status (supports multi-device)
   presence: defineTable({
     userId: v.id("users"),
-    tempUserId: v.optional(v.string()), // Local UUID for client-side self-filtering
-    user: v.string(), // Denormalized username
+    sessionId: v.string(), // Unique per device/tab for multi-device support
+    displayName: v.string(), // Denormalized username
     channelId: v.id("channels"),
     updated: v.number(), // Timestamp for staleness check
     data: v.union(
@@ -48,6 +48,6 @@ export default defineSchema({
       v.object({ type: v.literal("typing"), text: v.optional(v.string()) })
     ),
   })
-    .index("by_channel_updated", ["channelId", "updated"])
-    .index("by_user", ["userId"]),
+    .index("by_channel", ["channelId"])
+    .index("by_session", ["sessionId"]),
 });

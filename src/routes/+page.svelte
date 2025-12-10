@@ -272,7 +272,7 @@
       {#if typingUsersQuery.data}
         <TypingIndicator
           typingUsers={typingUsersQuery.data}
-          currentTempUserId={presenceManager.getTempUserId()}
+          currentSessionId={presenceManager.getSessionId()}
         />
       {/if}
       <ChatInput
