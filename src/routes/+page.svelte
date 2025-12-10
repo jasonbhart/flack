@@ -1,11 +1,13 @@
 <script lang="ts">
   import { browser } from "$app/environment";
+  import { goto } from "$app/navigation";
   import { useConvexClient, useQuery } from "convex-svelte";
   import { api } from "../../convex/_generated/api";
   import type { Id, Doc } from "../../convex/_generated/dataModel";
   import type { MergedMessage } from "$lib/types/messages";
   import { messageQueue } from "$lib/stores/QueueManager.svelte";
   import { presenceManager } from "$lib/stores/presence.svelte";
+  import { authStore } from "$lib/stores/auth.svelte";
   import ChannelList from "$lib/components/ChannelList.svelte";
   import MessageList from "$lib/components/MessageList.svelte";
   import ChatInput from "$lib/components/ChatInput.svelte";
@@ -17,25 +19,65 @@
   // Get Convex client for mutations
   const client = useConvexClient();
 
+  // Check session on load
+  const sessionQuery = useQuery(
+    api.auth.getSession,
+    () => ({ sessionToken: authStore.sessionToken ?? undefined })
+  );
+
+  // Update auth store when session query resolves
+  $effect(() => {
+    if (sessionQuery.data !== undefined) {
+      authStore.setUser(sessionQuery.data);
+      // Update presence manager with authenticated user name
+      if (sessionQuery.data) {
+        presenceManager.setUserName(sessionQuery.data.name);
+      }
+    }
+  });
+
+  // Handle logout
+  async function handleLogout() {
+    // Stop heartbeat first to prevent new presence updates
+    presenceManager.stopHeartbeat();
+
+    // Clear presence record so user doesn't appear online
+    await client.mutation(api.presence.clearPresence, {
+      sessionId: presenceManager.getSessionId(),
+    });
+
+    // Logout from auth
+    if (authStore.sessionToken) {
+      await client.mutation(api.auth.logout, {
+        sessionToken: authStore.sessionToken,
+      });
+    }
+    authStore.clearSession();
+    goto("/auth/login");
+  }
+
+  // Session token getter for authenticated requests
+  const getSessionToken = () => authStore.sessionToken;
+
   // Inject send mutation into QueueManager
   $effect(() => {
     messageQueue.setSendMutation(async (args) => {
       await client.mutation(api.messages.send, args);
-    });
+    }, getSessionToken);
   });
 
   // Inject heartbeat mutation into PresenceManager
   $effect(() => {
     presenceManager.setHeartbeatMutation(async (args) => {
       await client.mutation(api.presence.heartbeat, args);
-    });
+    }, getSessionToken);
   });
 
   // Theme state with localStorage persistence
   let isDark = $state(false);
 
   if (browser) {
-    isDark = localStorage.getItem("bolt-theme") === "dark";
+    isDark = localStorage.getItem("flack-theme") === "dark";
   }
 
   $effect(() => {
@@ -45,7 +87,7 @@
       } else {
         document.documentElement.classList.remove("dark");
       }
-      localStorage.setItem("bolt-theme", isDark ? "dark" : "light");
+      localStorage.setItem("flack-theme", isDark ? "dark" : "light");
     }
   });
 
@@ -118,8 +160,8 @@
    * 1. Build a Set of confirmed clientMutationIds from server messages
    * 2. Filter local queue: keep only entries NOT in confirmed set (still pending)
    * 3. Map server messages to MergedMessage format with status="confirmed"
-   * 4. Append pending queue entries (status="pending"|"sending"|"failed")
-   * 5. Result: confirmed messages first, then pending messages at the end
+   * 4. Add pending queue entries with their createdAt timestamp
+   * 5. Sort all messages chronologically by _creationTime
    */
   const mergedMessages = $derived.by(() => {
     // Step 1: Get server-confirmed messages from Convex real-time subscription
@@ -156,10 +198,11 @@
       })
     );
 
-    // Step 5: Append pending queue entries after confirmed messages
-    // These will render at 60% opacity (pending/sending) or with error (failed)
+    // Step 5: Add pending queue entries with their createdAt as _creationTime
+    // This ensures offline messages sort correctly among server messages
     stillPending.forEach((entry) => {
       merged.push({
+        _creationTime: entry.createdAt, // Use local timestamp for sorting
         clientMutationId: entry.clientMutationId,
         channelId: entry.channelId,
         authorName: entry.authorName,
@@ -169,7 +212,8 @@
       });
     });
 
-    return merged;
+    // Step 6: Sort chronologically - pending messages appear at correct position
+    return merged.sort((a, b) => a._creationTime - b._creationTime);
   });
 
   // Handle sending a message
@@ -226,7 +270,7 @@
 <div class="flex min-h-screen">
   <!-- Sidebar with extra top padding for macOS traffic lights (40px = pt-10) -->
   <aside class="w-64 bg-[var(--bg-secondary)] p-4 pt-10 flex flex-col">
-    <h2 class="text-lg font-bold mb-4">Bolt</h2>
+    <h2 class="text-lg font-bold mb-4">Flack</h2>
 
     <div class="text-xs text-[var(--text-secondary)] uppercase mb-2">
       Channels
@@ -252,17 +296,42 @@
     <!-- Spacer -->
     <div class="flex-1"></div>
 
-    <!-- Theme Toggle -->
-    <button
-      onclick={toggleTheme}
-      class="flex items-center gap-2 px-3 py-2 rounded text-sm text-[var(--text-secondary)] hover:bg-volt/10 hover:text-volt transition-colors"
-    >
-      {#if isDark}
-        <span>Light Mode</span>
-      {:else}
-        <span>Dark Mode</span>
+    <!-- User Info & Actions -->
+    <div class="border-t border-[var(--border-default)] pt-4 mt-4 space-y-2">
+      {#if authStore.user}
+        <div class="px-2 py-1">
+          <div class="text-sm font-medium truncate">{authStore.user.name}</div>
+          <div class="text-xs text-[var(--text-tertiary)] truncate">
+            {authStore.user.email}
+          </div>
+        </div>
+        <button
+          onclick={handleLogout}
+          class="w-full flex items-center gap-2 px-3 py-2 rounded text-sm text-[var(--text-secondary)] hover:bg-red-500/10 hover:text-red-500 transition-colors"
+        >
+          Sign out
+        </button>
+      {:else if !authStore.isLoading}
+        <a
+          href="/auth/login"
+          class="block w-full text-center px-3 py-2 bg-volt text-white rounded text-sm hover:bg-volt/90 transition-colors"
+        >
+          Sign in
+        </a>
       {/if}
-    </button>
+
+      <!-- Theme Toggle -->
+      <button
+        onclick={toggleTheme}
+        class="w-full flex items-center gap-2 px-3 py-2 rounded text-sm text-[var(--text-secondary)] hover:bg-volt/10 hover:text-volt transition-colors"
+      >
+        {#if isDark}
+          <span>Light Mode</span>
+        {:else}
+          <span>Dark Mode</span>
+        {/if}
+      </button>
+    </div>
   </aside>
 
   <!-- Main Content -->

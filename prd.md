@@ -1,13 +1,13 @@
-Here is your complete **Technical Kickoff Spec** for "Bolt." You can save this directly as `README.md` or `SPEC.md` in your repository root to guide development.
+Here is your complete **Technical Kickoff Spec** for "Flack." You can save this directly as `README.md` or `SPEC.md` in your repository root to guide development.
 
 -----
 
-# Project Bolt: Technical Specification
+# Project Flack: Technical Specification
 
 ## 1\. Mission & Philosophy
 
 **Goal:** Create a team communication platform that feels instant.
-**The "Physics" of Bolt:**
+**The "Physics" of Flack:**
 
 * **0ms Latency:** The UI never waits for the server.
 * **Offline-First:** Messages persist locally before they are sent.

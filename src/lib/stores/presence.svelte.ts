@@ -5,7 +5,10 @@ type HeartbeatMutationFn = (args: {
   type: "online" | "typing";
   userName?: string;
   sessionId: string;
+  sessionToken?: string;
 }) => Promise<unknown>;
+
+type SessionTokenGetter = () => string | null;
 
 class PresenceManager {
   currentChannelId = $state<Id<"channels"> | null>(null);
@@ -13,6 +16,7 @@ class PresenceManager {
   private sessionId: string;
   private userName: string;
   private heartbeatMutation: HeartbeatMutationFn | null = null;
+  private sessionTokenGetter: SessionTokenGetter | null = null;
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private lastTypingUpdate = 0;
 
@@ -21,18 +25,18 @@ class PresenceManager {
       // Generate a unique session ID for this device/tab
       // Stored in localStorage so it persists across page reloads but is unique per browser
       this.sessionId =
-        localStorage.getItem("bolt-session-id") ??
+        localStorage.getItem("flack-session-id") ??
         (() => {
           const id = crypto.randomUUID();
-          localStorage.setItem("bolt-session-id", id);
+          localStorage.setItem("flack-session-id", id);
           return id;
         })();
       // Get or generate username
       this.userName =
-        localStorage.getItem("bolt-user-name") ??
+        localStorage.getItem("flack-user-name") ??
         (() => {
           const name = `User-${this.sessionId.slice(0, 4)}`;
-          localStorage.setItem("bolt-user-name", name);
+          localStorage.setItem("flack-user-name", name);
           return name;
         })();
     } else {
@@ -41,8 +45,9 @@ class PresenceManager {
     }
   }
 
-  setHeartbeatMutation(fn: HeartbeatMutationFn) {
+  setHeartbeatMutation(fn: HeartbeatMutationFn, sessionTokenGetter: SessionTokenGetter) {
     this.heartbeatMutation = fn;
+    this.sessionTokenGetter = sessionTokenGetter;
   }
 
   setChannel(channelId: Id<"channels"> | null) {
@@ -56,11 +61,13 @@ class PresenceManager {
     if (!this.heartbeatMutation || !this.currentChannelId) return;
 
     try {
+      const sessionToken = this.sessionTokenGetter?.() ?? undefined;
       await this.heartbeatMutation({
         channelId: this.currentChannelId,
         type: this.isTyping ? "typing" : "online",
         userName: this.userName,
         sessionId: this.sessionId,
+        sessionToken,
       });
     } catch {
       // Silently fail heartbeats
@@ -74,7 +81,7 @@ class PresenceManager {
   setUserName(name: string) {
     this.userName = name;
     if (typeof window !== "undefined") {
-      localStorage.setItem("bolt-user-name", name);
+      localStorage.setItem("flack-user-name", name);
     }
   }
 

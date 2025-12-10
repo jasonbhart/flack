@@ -7,7 +7,34 @@ export default defineSchema({
     name: v.string(),
     email: v.string(),
     avatarUrl: v.optional(v.string()),
-  }).index("by_email", ["email"]),
+    isTemp: v.optional(v.boolean()), // True for guest/anonymous users
+  })
+    .index("by_email", ["email"])
+    .index("by_is_temp", ["isTemp"]),
+
+  // Auth tokens for magic link authentication
+  authTokens: defineTable({
+    email: v.string(),
+    token: v.string(), // Hashed random token sent in magic link
+    code: v.string(), // Hashed 6-digit code for manual entry (desktop)
+    expiresAt: v.number(), // Timestamp when token expires
+    used: v.boolean(), // Prevent replay attacks
+    attempts: v.optional(v.number()), // Brute-force protection: code verification attempts
+  })
+    .index("by_token", ["token"])
+    .index("by_code", ["code"])
+    .index("by_email", ["email"])
+    .index("by_expires", ["expiresAt"]), // For cleanup cron efficiency
+
+  // Sessions for authenticated users
+  sessions: defineTable({
+    userId: v.id("users"),
+    token: v.string(), // Session token stored in client
+    expiresAt: v.number(),
+  })
+    .index("by_token", ["token"])
+    .index("by_user", ["userId"])
+    .index("by_expires", ["expiresAt"]), // For cleanup cron efficiency
 
   // Channels table
   channels: defineTable({
@@ -34,7 +61,8 @@ export default defineSchema({
     ),
   })
     .index("by_channel", ["channelId"])
-    .index("by_client_mutation_id", ["clientMutationId"]),
+    .index("by_client_mutation_id", ["clientMutationId"])
+    .index("by_user", ["userId"]),
 
   // Presence table for online/typing status (supports multi-device)
   presence: defineTable({
@@ -49,5 +77,7 @@ export default defineSchema({
     ),
   })
     .index("by_channel", ["channelId"])
-    .index("by_session", ["sessionId"]),
+    .index("by_session", ["sessionId"])
+    .index("by_user", ["userId"])
+    .index("by_updated", ["updated"]),
 });

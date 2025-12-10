@@ -1,4 +1,4 @@
-# Bolt
+# Flack
 
 A team communication platform optimized for instant performance. Core philosophy: 0ms latency UI, offline-first messaging, minimal bloat.
 
@@ -24,6 +24,11 @@ npm install
 # Copy environment example and configure
 cp .env.example .env
 # Edit .env with your Convex deployment URL
+
+# Set up Convex environment variables (for authentication)
+npx convex env set RESEND_API_KEY your-resend-api-key
+npx convex env set RESEND_EMAIL your-verified-email@domain.com
+npx convex env set SITE_URL http://localhost:5173
 
 # Run Convex dev server (terminal 1)
 npx convex dev
@@ -74,9 +79,9 @@ npm run tauri:build
 ```
 
 The compiled binary is located at:
-- **macOS:** `src-tauri/target/release/bundle/macos/Bolt.app`
-- **Windows:** `src-tauri/target/release/bundle/msi/Bolt_0.1.0_x64_en-US.msi`
-- **Linux:** `src-tauri/target/release/bundle/appimage/Bolt_0.1.0_amd64.AppImage`
+- **macOS:** `src-tauri/target/release/bundle/macos/Flack.app`
+- **Windows:** `src-tauri/target/release/bundle/msi/Flack_0.1.0_x64_en-US.msi`
+- **Linux:** `src-tauri/target/release/bundle/appimage/Flack_0.1.0_amd64.AppImage`
 
 ### Platform-Specific Setup
 
@@ -102,7 +107,7 @@ Desktop builds must be compiled on the target platform (cross-compilation is not
    npm run tauri build
    ```
 
-The app bundle will be at `src-tauri/target/release/bundle/macos/Bolt.app`
+The app bundle will be at `src-tauri/target/release/bundle/macos/Flack.app`
 
 #### Windows
 
@@ -121,7 +126,7 @@ The app bundle will be at `src-tauri/target/release/bundle/macos/Bolt.app`
    npm run tauri build
    ```
 
-The installer will be at `src-tauri/target/release/bundle/msi/Bolt_0.1.0_x64_en-US.msi`
+The installer will be at `src-tauri/target/release/bundle/msi/Flack_0.1.0_x64_en-US.msi`
 
 #### Linux
 
@@ -155,7 +160,7 @@ npm run build
 npm run tauri build
 ```
 
-The AppImage will be at `src-tauri/target/release/bundle/appimage/Bolt_0.1.0_amd64.AppImage`
+The AppImage will be at `src-tauri/target/release/bundle/appimage/Flack_0.1.0_amd64.AppImage`
 
 ### Common Issues
 
@@ -172,6 +177,25 @@ npm run test
 # Run tests once (CI mode)
 npm run test:run
 ```
+
+## Authentication
+
+Flack uses passwordless magic link authentication:
+
+1. User enters email on `/auth/login`
+2. System sends email with clickable magic link + 6-digit code
+3. **Web users:** Click magic link → redirected to `/auth/verify` → signed in
+4. **Desktop users:** Enter 6-digit code manually (Tauri can't intercept browser links)
+
+### Environment Variables (Convex)
+
+Set these via `npx convex env set`:
+
+| Variable | Description |
+|----------|-------------|
+| `RESEND_API_KEY` | API key from [resend.com](https://resend.com) |
+| `RESEND_EMAIL` | Verified sender email address |
+| `SITE_URL` | Frontend URL for magic links (e.g., `http://localhost:5173`) |
 
 ## Project Structure
 

@@ -1,5 +1,68 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
+import { getAuthenticatedUser } from "./authHelpers";
+import type { Id } from "./_generated/dataModel";
+
+// Cleanup stale presence records older than 1 hour
+const PRESENCE_CLEANUP_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+// Cleanup temp users older than 24 hours with no activity
+const USER_CLEANUP_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+export const cleanup = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const presenceThreshold = Date.now() - PRESENCE_CLEANUP_THRESHOLD_MS;
+    const userThreshold = Date.now() - USER_CLEANUP_THRESHOLD_MS;
+
+    // Find all stale presence records using by_updated index (O(log n) lookup)
+    const stalePresence = await ctx.db
+      .query("presence")
+      .withIndex("by_updated", (q) => q.lt("updated", presenceThreshold))
+      .collect();
+
+    // Delete stale presence records
+    for (const record of stalePresence) {
+      await ctx.db.delete(record._id);
+    }
+
+    // Find temp users using the isTemp index (O(log n) lookup)
+    // Only consider users created more than 24 hours ago
+    const tempUsers = await ctx.db
+      .query("users")
+      .withIndex("by_is_temp", (q) => q.eq("isTemp", true))
+      .filter((q) => q.lt(q.field("_creationTime"), userThreshold))
+      .collect();
+
+    // Check each temp user for recent activity before deleting
+    let deletedUsers = 0;
+    for (const user of tempUsers) {
+      // Check if user has any active presence records
+      const hasPresence = await ctx.db
+        .query("presence")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .first();
+
+      // If user has presence, they're still active - don't delete
+      if (hasPresence) {
+        continue;
+      }
+
+      // Check if user has any messages - if so, they're a legitimate user, don't delete
+      const hasMessages = await ctx.db
+        .query("messages")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .first();
+
+      // Only delete if no presence and no messages, and older than threshold
+      if (!hasMessages) {
+        await ctx.db.delete(user._id);
+        deletedUsers++;
+      }
+    }
+
+    return { deletedPresence: stalePresence.length, deletedUsers };
+  },
+});
 
 export const heartbeat = mutation({
   args: {
@@ -7,24 +70,38 @@ export const heartbeat = mutation({
     type: v.union(v.literal("online"), v.literal("typing")),
     userName: v.optional(v.string()),
     sessionId: v.string(), // Required: unique per device/tab
+    sessionToken: v.optional(v.string()), // Optional: for authenticated users
   },
   handler: async (ctx, args) => {
-    const userName = args.userName ?? "Anonymous";
+    // Try to get authenticated user first
+    const authUser = await getAuthenticatedUser(ctx, args.sessionToken);
 
-    // Create a temporary user record if needed
-    let user = await ctx.db
-      .query("users")
-      .filter((q) => q.eq(q.field("email"), `${args.sessionId}@temp.local`))
-      .first();
+    let userIdToUse: Id<"users">;
+    let displayName: string;
 
-    let userIdToUse;
-    if (!user) {
-      userIdToUse = await ctx.db.insert("users", {
-        name: userName,
-        email: `${args.sessionId}@temp.local`,
-      });
+    if (authUser) {
+      // Use authenticated user
+      userIdToUse = authUser._id;
+      displayName = authUser.name;
     } else {
-      userIdToUse = user._id;
+      // Fall back to temp user for unauthenticated users
+      displayName = args.userName ?? "Anonymous";
+
+      // Create a temporary user record if needed (use index for O(1) lookup)
+      const tempUser = await ctx.db
+        .query("users")
+        .withIndex("by_email", (q) => q.eq("email", `${args.sessionId}@temp.local`))
+        .first();
+
+      if (!tempUser) {
+        userIdToUse = await ctx.db.insert("users", {
+          name: displayName,
+          email: `${args.sessionId}@temp.local`,
+          isTemp: true, // Mark as temporary/guest user for cleanup
+        });
+      } else {
+        userIdToUse = tempUser._id;
+      }
     }
 
     // Check for existing presence record by sessionId (supports multi-device)
@@ -38,10 +115,11 @@ export const heartbeat = mutation({
     if (existing) {
       // Update existing session record
       await ctx.db.patch(existing._id, {
+        userId: userIdToUse, // Update userId in case user just logged in
         channelId: args.channelId,
         updated: now,
         data: { type: args.type },
-        displayName: userName,
+        displayName,
       });
       return existing._id;
     } else {
@@ -49,7 +127,7 @@ export const heartbeat = mutation({
       const presenceId = await ctx.db.insert("presence", {
         userId: userIdToUse,
         sessionId: args.sessionId,
-        displayName: userName,
+        displayName,
         channelId: args.channelId,
         updated: now,
         data: { type: args.type },
@@ -70,7 +148,7 @@ export const listOnline = query({
       .collect();
 
     return presenceRecords.map((p) => ({
-      oduserId: p.userId.toString(),
+      odUserId: p.userId.toString(),
       sessionId: p.sessionId,
       displayName: p.displayName,
       updated: p.updated,
@@ -90,10 +168,32 @@ export const listTyping = query({
       .collect();
 
     return presenceRecords.map((p) => ({
-      oduserId: p.userId.toString(),
+      odUserId: p.userId.toString(),
       sessionId: p.sessionId,
       displayName: p.displayName,
       updated: p.updated,
     }));
+  },
+});
+
+/**
+ * Clear presence for a session (called on logout)
+ */
+export const clearPresence = mutation({
+  args: {
+    sessionId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Find and delete presence record for this session
+    const presence = await ctx.db
+      .query("presence")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .first();
+
+    if (presence) {
+      await ctx.db.delete(presence._id);
+    }
+
+    return { success: true };
   },
 });

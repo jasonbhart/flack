@@ -33,7 +33,7 @@ export const seed = mutation({
       channelId: generalId,
       userId,
       authorName: "Test User",
-      body: "Welcome to Bolt! This is a test message.",
+      body: "Welcome to Flack! This is a test message.",
       clientMutationId: "seed-msg-1",
     });
 

@@ -2,7 +2,7 @@ import { get, set } from "idb-keyval";
 import type { QueueEntry, QueueStorage } from "$lib/types/queue";
 import type { Id } from "../../../convex/_generated/dataModel";
 
-const QUEUE_KEY = "bolt-message-queue";
+const QUEUE_KEY = "flack-message-queue";
 const MAX_RETRIES = 5;
 const BASE_DELAY = 1000;
 const MAX_DELAY = 30000;
@@ -12,7 +12,10 @@ type SendMutationFn = (args: {
   body: string;
   clientMutationId: string;
   authorName: string;
+  sessionToken?: string;
 }) => Promise<unknown>;
+
+type SessionTokenGetter = () => string | null;
 
 class MessageQueue {
   queue = $state<QueueEntry[]>([]);
@@ -20,8 +23,10 @@ class MessageQueue {
   isSyncing = $state(false);
 
   private sendMutation: SendMutationFn | null = null;
+  private sessionTokenGetter: SessionTokenGetter | null = null;
   private onlineHandler: (() => void) | null = null;
   private offlineHandler: (() => void) | null = null;
+  private initPromise: Promise<void>;
 
   constructor() {
     if (typeof window !== "undefined") {
@@ -39,8 +44,10 @@ class MessageQueue {
       window.addEventListener("online", this.onlineHandler);
       window.addEventListener("offline", this.offlineHandler);
 
-      // Restore queue from IndexedDB
-      this.restore();
+      // Restore queue from IndexedDB - store promise to await before enqueue
+      this.initPromise = this.restore();
+    } else {
+      this.initPromise = Promise.resolve();
     }
   }
 
@@ -56,8 +63,9 @@ class MessageQueue {
     }
   }
 
-  setSendMutation(fn: SendMutationFn) {
+  setSendMutation(fn: SendMutationFn, sessionTokenGetter: SessionTokenGetter) {
     this.sendMutation = fn;
+    this.sessionTokenGetter = sessionTokenGetter;
   }
 
   // TODO: Consider debouncing persist() calls for high-volume message scenarios
@@ -98,6 +106,9 @@ class MessageQueue {
   async enqueue(
     entry: Omit<QueueEntry, "retryCount" | "createdAt">
   ): Promise<void> {
+    // Wait for restore() to complete before enqueueing to prevent race condition
+    await this.initPromise;
+
     const newEntry: QueueEntry = {
       ...entry,
       retryCount: 0,
@@ -156,11 +167,13 @@ class MessageQueue {
     await this.persist();
 
     try {
+      const sessionToken = this.sessionTokenGetter?.() ?? undefined;
       await this.sendMutation({
         channelId: entry.channelId,
         body: entry.body,
         clientMutationId: entry.clientMutationId,
         authorName: entry.authorName,
+        sessionToken,
       });
 
       // Success - remove from queue

@@ -51,7 +51,7 @@ export interface ServerMessage {
 
 export interface MergedMessage {
   _id?: Id<"messages">;
-  _creationTime?: number;
+  _creationTime: number; // Required for chronological sorting
   clientMutationId: string;
   channelId: Id<"channels">;
   authorName: string;

@@ -2,24 +2,22 @@ use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
     Manager,
 };
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_window_state::Builder::new().build())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             // Build app menu
             let app_menu = Submenu::with_items(
                 app,
-                "Bolt",
+                "Flack",
                 true,
                 &[
-                    &PredefinedMenuItem::about(app, Some("About Bolt"), None)?,
+                    &PredefinedMenuItem::about(app, Some("About Flack"), None)?,
                     &PredefinedMenuItem::separator(app)?,
-                    &PredefinedMenuItem::quit(app, Some("Quit Bolt"))?,
+                    &PredefinedMenuItem::quit(app, Some("Quit Flack"))?,
                 ],
             )?;
 
@@ -52,19 +50,6 @@ pub fn run() {
 
             let menu = Menu::with_items(app, &[&app_menu, &edit_menu, &window_menu])?;
             app.set_menu(menu)?;
-
-            // Register global shortcut: Cmd+K (macOS) or Ctrl+K (Windows/Linux) to focus window
-            #[cfg(target_os = "macos")]
-            let shortcut = Shortcut::new(Some(Modifiers::SUPER), Code::KeyK);
-            #[cfg(not(target_os = "macos"))]
-            let shortcut = Shortcut::new(Some(Modifiers::CONTROL), Code::KeyK);
-
-            // Safely handle window retrieval to avoid panic during shutdown/init errors
-            if let Some(window) = app.get_webview_window("main") {
-                app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, _event| {
-                    let _ = window.set_focus();
-                })?;
-            }
 
             Ok(())
         })

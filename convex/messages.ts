@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { getAuthenticatedUser } from "./authHelpers";
 
 export const list = query({
   args: { channelId: v.id("channels") },
@@ -16,9 +17,9 @@ export const send = mutation({
     channelId: v.id("channels"),
     body: v.string(),
     clientMutationId: v.string(),
-    // For now, accept authorName directly since we don't have auth yet
+    sessionToken: v.optional(v.string()), // Optional: for authenticated users
+    // Fallback for unauthenticated users
     authorName: v.optional(v.string()),
-    userId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
     // Check for existing message with same clientMutationId (idempotency)
@@ -34,18 +35,24 @@ export const send = mutation({
       return existing._id;
     }
 
-    // For now, use a placeholder user if not provided
-    // In production, this would come from ctx.auth.getUserIdentity()
-    const authorName = args.authorName ?? "Anonymous";
+    // Try to get authenticated user first
+    const authUser = await getAuthenticatedUser(ctx, args.sessionToken);
 
-    // Create a placeholder userId if not provided
-    // In production, this would be looked up from the authenticated user
-    let userId = args.userId;
-    if (!userId) {
-      // Check if we have a default user, if not create one
+    let userId;
+    let authorName;
+
+    if (authUser) {
+      // Use authenticated user
+      userId = authUser._id;
+      authorName = authUser.name;
+    } else {
+      // Fall back to anonymous user for unauthenticated users
+      authorName = args.authorName ?? "Anonymous";
+
+      // Check if we have a default anonymous user, if not create one
       const existingUser = await ctx.db
         .query("users")
-        .withIndex("by_email", (q) => q.eq("email", "anonymous@bolt.local"))
+        .withIndex("by_email", (q) => q.eq("email", "anonymous@flack.local"))
         .first();
 
       if (existingUser) {
@@ -53,7 +60,8 @@ export const send = mutation({
       } else {
         userId = await ctx.db.insert("users", {
           name: "Anonymous",
-          email: "anonymous@bolt.local",
+          email: "anonymous@flack.local",
+          isTemp: true,
         });
       }
     }

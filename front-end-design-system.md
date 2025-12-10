@@ -4,11 +4,11 @@ You can save this as `DESIGN.md` in your repository root.
 
 -----
 
-# Bolt Design System: "Kinetic UI"
+# Flack Design System: "Kinetic UI"
 
 ## 1\. Design Philosophy
 
-The core design principle of Bolt is **Immediacy**. The interface should feel like a direct extension of the user's thought process. If the technical goal is 0ms latency, the design goal is **0ms cognitive load**.
+The core design principle of Flack is **Immediacy**. The interface should feel like a direct extension of the user's thought process. If the technical goal is 0ms latency, the design goal is **0ms cognitive load**.
 
 Every pixel needs to justify its existence. We prioritized density, clarity, and native integration over decoration.
 

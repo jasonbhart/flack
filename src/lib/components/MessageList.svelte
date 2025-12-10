@@ -25,15 +25,26 @@
   let prevFirstMessageId: string | undefined = undefined;
 
   // Auto-scroll to bottom only when:
-  // 1. New messages are added (count increases)
-  // 2. Context switches (e.g., channel change - first message ID changes)
-  // Does NOT scroll when existing messages change status (pending → confirmed)
+  // 1. Context switches (e.g., channel change - first message ID changes)
+  // 2. New messages arrive AND user is already near the bottom (within 100px)
+  // Does NOT scroll when:
+  // - User is scrolled up reading history
+  // - Existing messages change status (pending → confirmed)
   $effect(() => {
+    if (!containerRef) return;
+
     const currentFirstId = messages[0]?.clientMutationId;
     const isContextSwitch = currentFirstId !== prevFirstMessageId;
     const hasNewMessages = messages.length > prevMessageCount;
 
-    if ((hasNewMessages || isContextSwitch) && containerRef) {
+    // Check if user is near the bottom (within 100px)
+    const distanceFromBottom =
+      containerRef.scrollHeight - containerRef.scrollTop - containerRef.clientHeight;
+    const isNearBottom = distanceFromBottom < 100;
+
+    // Always scroll on context switch (channel change)
+    // Only scroll on new messages if user is already near bottom
+    if (isContextSwitch || (hasNewMessages && isNearBottom)) {
       containerRef.scrollTop = containerRef.scrollHeight;
     }
 

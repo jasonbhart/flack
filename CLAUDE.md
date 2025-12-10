@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Bolt** is a team communication platform optimized for instant performance. Core philosophy: 0ms latency UI, offline-first messaging, minimal bloat.
+**Flack** is a team communication platform optimized for instant performance. Core philosophy: 0ms latency UI, offline-first messaging, minimal bloat.
 
 ## Tech Stack
 
@@ -35,13 +35,36 @@ User sends message
     → On confirmation: remove from queue, full opacity
 ```
 
+### Authentication Flow
+
+Passwordless magic link auth with desktop fallback:
+
+```
+User enters email
+    → Generate random token + 6-digit code
+    → Hash both with SHA-256 (never store raw)
+    → Send email via Resend with magic link + code
+    → Web: Click link → /auth/verify#token=xxx → verify hash → create session
+    → Desktop: Enter 6-digit code → verify hash → create session
+```
+
+**Security notes:**
+- Tokens/codes hashed before storage (SHA-256)
+- Sessions expire after 30 days
+- Magic links expire after 15 minutes
+- Codes are single-use (marked `used: true` after verification)
+
 ### Critical Files
 
 - `convex/schema.ts` - Data schema with idempotency index on `clientMutationId`
 - `convex/messages.ts` - Idempotent send mutation
 - `convex/presence.ts` - Typing indicators/online status
+- `convex/auth.ts` - Magic link auth, session management, token hashing
 - `src/lib/stores/QueueManager.svelte.ts` - Offline-first pending queue using Svelte 5 `$state`
+- `src/lib/stores/auth.svelte.ts` - Client-side auth state with localStorage persistence
 - `src/routes/+page.svelte` - Merges server + local state via `$derived`
+- `src/routes/auth/login/+page.svelte` - Email entry + 6-digit code input
+- `src/routes/auth/verify/+page.svelte` - Magic link verification
 
 ### Schema Design Decisions
 
@@ -66,6 +89,14 @@ User sends message
 - **Volt:** `#3B82F6` - Primary accent for active states
 - **Ink:** Dark mode neutrals (900: `#0F172A` background)
 - **Paper:** Light mode neutrals (50: `#F8FAFC` background)
+
+## Environment Variables (Convex)
+
+Set via `npx convex env set`:
+
+- `RESEND_API_KEY` - Resend API key for sending emails
+- `RESEND_EMAIL` - Verified sender email address
+- `SITE_URL` - Frontend URL for magic links (defaults to `http://localhost:5173`)
 
 ## Development Commands
 
