@@ -4,4 +4,4 @@ compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".svelte-kit/cloudflare"
 
 [vars]
-PUBLIC_CONVEX_URL = "https://stoic-otter-636.convex.cloud"
+PUBLIC_CONVEX_URL = "https://uncommon-ant-509.convex.cloud"
