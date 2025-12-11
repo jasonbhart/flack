@@ -60,8 +60,11 @@ class PresenceManager {
   private async sendHeartbeat() {
     if (!this.heartbeatMutation || !this.currentChannelId) return;
 
+    // Don't send heartbeat if not authenticated
+    const sessionToken = this.sessionTokenGetter?.();
+    if (!sessionToken) return;
+
     try {
-      const sessionToken = this.sessionTokenGetter?.() ?? undefined;
       await this.heartbeatMutation({
         channelId: this.currentChannelId,
         type: this.isTyping ? "typing" : "online",
