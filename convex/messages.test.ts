@@ -232,5 +232,28 @@ describe("messages", () => {
         })
       ).rejects.toThrow("Not a member");
     });
+
+    it("rejects list without sessionToken", async () => {
+      const t = convexTest(schema, modules);
+      const { sessionToken } = await createAuthenticatedUser(
+        t,
+        "Alice",
+        "alice@example.com"
+      );
+
+      const { channelId } = await t.mutation(api.channels.create, {
+        sessionToken,
+        name: "test-channel",
+      });
+
+      // This documents the API contract: sessionToken is REQUIRED
+      // Frontend must always pass sessionToken to authenticated queries
+      await expect(
+        t.query(api.messages.list, {
+          channelId,
+          // sessionToken intentionally omitted
+        } as any)
+      ).rejects.toThrow();
+    });
   });
 });
