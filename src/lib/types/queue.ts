@@ -9,10 +9,11 @@ import type { Id } from "../../../convex/_generated/dataModel";
  * - **pending**: Waiting to be sent (offline or queued)
  * - **sending**: Mutation in-flight (prevents duplicate sends)
  * - **failed**: Send failed, will auto-retry or await manual retry
+ * - **confirming**: Server confirmed, removal in progress (prevents duplicates)
  *
  * @see MessageStatus in messages.ts for full state machine documentation
  */
-export type QueueEntryStatus = "pending" | "sending" | "failed";
+export type QueueEntryStatus = "pending" | "sending" | "failed" | "confirming";
 
 export interface QueueEntry {
   clientMutationId: string;

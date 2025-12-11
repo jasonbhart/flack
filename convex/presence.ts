@@ -1,6 +1,7 @@
 import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
-import { getAuthenticatedUser } from "./authHelpers";
+import { withAuthQuery, withAuthMutation, isValidSession } from "./authMiddleware";
+import { checkMembership } from "./channelMembers";
 import type { Id } from "./_generated/dataModel";
 
 // Cleanup stale presence records older than 1 hour
@@ -64,44 +65,21 @@ export const cleanup = internalMutation({
   },
 });
 
-export const heartbeat = mutation({
+/**
+ * Heartbeat to update presence status.
+ * Requires valid session and channel membership.
+ */
+export const heartbeat = withAuthMutation({
   args: {
     channelId: v.id("channels"),
     type: v.union(v.literal("online"), v.literal("typing")),
-    userName: v.optional(v.string()),
     sessionId: v.string(), // Required: unique per device/tab
-    sessionToken: v.optional(v.string()), // Optional: for authenticated users
   },
   handler: async (ctx, args) => {
-    // Try to get authenticated user first
-    const authUser = await getAuthenticatedUser(ctx, args.sessionToken);
-
-    let userIdToUse: Id<"users">;
-    let displayName: string;
-
-    if (authUser) {
-      // Use authenticated user
-      userIdToUse = authUser._id;
-      displayName = authUser.name;
-    } else {
-      // Fall back to temp user for unauthenticated users
-      displayName = args.userName ?? "Anonymous";
-
-      // Create a temporary user record if needed (use index for O(1) lookup)
-      const tempUser = await ctx.db
-        .query("users")
-        .withIndex("by_email", (q) => q.eq("email", `${args.sessionId}@temp.local`))
-        .first();
-
-      if (!tempUser) {
-        userIdToUse = await ctx.db.insert("users", {
-          name: displayName,
-          email: `${args.sessionId}@temp.local`,
-          isTemp: true, // Mark as temporary/guest user for cleanup
-        });
-      } else {
-        userIdToUse = tempUser._id;
-      }
+    // Verify channel membership
+    const isMember = await checkMembership(ctx, args.channelId, ctx.user._id);
+    if (!isMember) {
+      throw new Error("Unauthorized: Not a member of this channel");
     }
 
     // Check for existing presence record by sessionId (supports multi-device)
@@ -115,19 +93,19 @@ export const heartbeat = mutation({
     if (existing) {
       // Update existing session record
       await ctx.db.patch(existing._id, {
-        userId: userIdToUse, // Update userId in case user just logged in
+        userId: ctx.user._id,
         channelId: args.channelId,
         updated: now,
         data: { type: args.type },
-        displayName,
+        displayName: ctx.user.name,
       });
       return existing._id;
     } else {
       // Insert new presence record for this session
       const presenceId = await ctx.db.insert("presence", {
-        userId: userIdToUse,
+        userId: ctx.user._id,
         sessionId: args.sessionId,
-        displayName,
+        displayName: ctx.user.name,
         channelId: args.channelId,
         updated: now,
         data: { type: args.type },
@@ -137,18 +115,27 @@ export const heartbeat = mutation({
   },
 });
 
-export const listOnline = query({
+/**
+ * List online users in a channel.
+ * Requires valid session and channel membership.
+ */
+export const listOnline = withAuthQuery({
   args: { channelId: v.id("channels") },
   handler: async (ctx, args) => {
+    // Verify channel membership
+    const isMember = await checkMembership(ctx, args.channelId, ctx.user._id);
+    if (!isMember) {
+      throw new Error("Unauthorized: Not a member of this channel");
+    }
+
     // Return all presence records for channel - client handles staleness filtering
-    // This avoids stale data issues with Date.now() in queries
     const presenceRecords = await ctx.db
       .query("presence")
       .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
       .collect();
 
     return presenceRecords.map((p) => ({
-      odUserId: p.userId.toString(),
+      userId: p.userId.toString(),
       sessionId: p.sessionId,
       displayName: p.displayName,
       updated: p.updated,
@@ -157,9 +144,19 @@ export const listOnline = query({
   },
 });
 
-export const listTyping = query({
+/**
+ * List typing users in a channel.
+ * Requires valid session and channel membership.
+ */
+export const listTyping = withAuthQuery({
   args: { channelId: v.id("channels") },
   handler: async (ctx, args) => {
+    // Verify channel membership
+    const isMember = await checkMembership(ctx, args.channelId, ctx.user._id);
+    if (!isMember) {
+      throw new Error("Unauthorized: Not a member of this channel");
+    }
+
     // Return all typing records for channel - client handles staleness filtering
     const presenceRecords = await ctx.db
       .query("presence")
@@ -168,7 +165,7 @@ export const listTyping = query({
       .collect();
 
     return presenceRecords.map((p) => ({
-      odUserId: p.userId.toString(),
+      userId: p.userId.toString(),
       sessionId: p.sessionId,
       displayName: p.displayName,
       updated: p.updated,
@@ -177,20 +174,22 @@ export const listTyping = query({
 });
 
 /**
- * Clear presence for a session (called on logout)
+ * Clear presence for a session (called on logout).
+ * Requires valid session to prevent abuse.
  */
-export const clearPresence = mutation({
+export const clearPresence = withAuthMutation({
   args: {
     sessionId: v.string(),
   },
   handler: async (ctx, args) => {
     // Find and delete presence record for this session
+    // Only allow clearing own sessions (by matching user)
     const presence = await ctx.db
       .query("presence")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .first();
 
-    if (presence) {
+    if (presence && presence.userId === ctx.user._id) {
       await ctx.db.delete(presence._id);
     }
 

@@ -1,8 +1,9 @@
 <script lang="ts">
   import PresenceIndicator from "./PresenceIndicator.svelte";
+  import EmptyState from "./EmptyState.svelte";
 
   interface OnlineUser {
-    odUserId: string;
+    userId: string;
     sessionId: string;
     displayName: string;
     updated: number;
@@ -29,14 +30,14 @@
     onlineUsers.filter((u) => now - u.updated < ONLINE_TIMEOUT)
   );
 
-  // Deduplicate by oduserId (same user on multiple devices shows once)
+  // Deduplicate by userId (same user on multiple devices shows once)
   // Keep the most recently updated session for each user
   const uniqueUsers = $derived.by(() => {
     const userMap = new Map<string, OnlineUser>();
     for (const user of activeUsers) {
-      const existing = userMap.get(user.odUserId);
+      const existing = userMap.get(user.userId);
       if (!existing || user.updated > existing.updated) {
-        userMap.set(user.odUserId, user);
+        userMap.set(user.userId, user);
       }
     }
     return Array.from(userMap.values());
@@ -47,10 +48,10 @@
   <div class="text-xs text-ink-400 uppercase mb-2">Online</div>
 
   {#if uniqueUsers.length === 0}
-    <div class="text-sm text-[var(--text-secondary)]">No one online</div>
+    <EmptyState variant="users" />
   {:else}
     <ul class="flex flex-col gap-1" role="list" aria-label="Online users">
-      {#each uniqueUsers as user (user.odUserId)}
+      {#each uniqueUsers as user (user.userId)}
         <li class="flex items-center gap-2 text-sm">
           <PresenceIndicator isOnline={true} />
           <span>{user.displayName}</span>

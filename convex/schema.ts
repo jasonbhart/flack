@@ -43,6 +43,27 @@ export default defineSchema({
     teamId: v.optional(v.string()),
   }),
 
+  // Channel membership for authorization
+  channelMembers: defineTable({
+    channelId: v.id("channels"),
+    userId: v.id("users"),
+    role: v.union(v.literal("owner"), v.literal("admin"), v.literal("member")),
+    joinedAt: v.number(),
+  })
+    .index("by_channel", ["channelId"])
+    .index("by_user", ["userId"])
+    .index("by_channel_and_user", ["channelId", "userId"]),
+
+  // Rate limiting for auth endpoints
+  rateLimits: defineTable({
+    key: v.string(), // Composite key: "email:user@example.com" or "ip:192.168.1.1"
+    type: v.union(v.literal("minute"), v.literal("hour")),
+    windowStart: v.number(), // Timestamp when this window started
+    count: v.number(), // Number of requests in this window
+  })
+    .index("by_key_and_type", ["key", "type"])
+    .index("by_window_start", ["windowStart"]),
+
   // Messages table with idempotency support
   messages: defineTable({
     channelId: v.id("channels"),

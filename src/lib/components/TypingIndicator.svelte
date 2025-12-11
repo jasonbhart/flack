@@ -1,6 +1,6 @@
 <script lang="ts">
   interface TypingUser {
-    odUserId: string;
+    userId: string;
     sessionId: string;
     displayName: string;
     updated: number;
@@ -31,7 +31,7 @@
     typingUsers.filter((u) => now - u.updated < TYPING_TIMEOUT)
   );
 
-  // Filter out current session and deduplicate by oduserId
+  // Filter out current session and deduplicate by userId
   // This handles multi-device: excludes all sessions from current device
   const filteredUsers = $derived.by(() => {
     // First filter out current session
@@ -39,12 +39,12 @@
       (u) => u.sessionId !== currentSessionId
     );
 
-    // Deduplicate by oduserId (same user on multiple devices shows once)
+    // Deduplicate by userId (same user on multiple devices shows once)
     const userMap = new Map<string, TypingUser>();
     for (const user of otherSessions) {
-      const existing = userMap.get(user.odUserId);
+      const existing = userMap.get(user.userId);
       if (!existing || user.updated > existing.updated) {
-        userMap.set(user.odUserId, user);
+        userMap.set(user.userId, user);
       }
     }
     return Array.from(userMap.values());

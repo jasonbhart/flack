@@ -8,6 +8,7 @@
   import { messageQueue } from "$lib/stores/QueueManager.svelte";
   import { presenceManager } from "$lib/stores/presence.svelte";
   import { authStore } from "$lib/stores/auth.svelte";
+  import { unreadCounts } from "$lib/stores/unreadCounts.svelte";
   import ChannelList from "$lib/components/ChannelList.svelte";
   import MessageList from "$lib/components/MessageList.svelte";
   import ChatInput from "$lib/components/ChatInput.svelte";
@@ -15,6 +16,17 @@
   import QueueStatus from "$lib/components/QueueStatus.svelte";
   import OnlineUsers from "$lib/components/OnlineUsers.svelte";
   import TypingIndicator from "$lib/components/TypingIndicator.svelte";
+  import SkipLink from "$lib/components/SkipLink.svelte";
+  import MobileDrawer from "$lib/components/MobileDrawer.svelte";
+  import HamburgerButton from "$lib/components/HamburgerButton.svelte";
+  import PersistenceWarning from "$lib/components/PersistenceWarning.svelte";
+  import StorageWarning from "$lib/components/StorageWarning.svelte";
+  import LoadingSkeleton from "$lib/components/LoadingSkeleton.svelte";
+  import ErrorBoundary from "$lib/components/ErrorBoundary.svelte";
+  import EmptyState from "$lib/components/EmptyState.svelte";
+  import QuickSwitcher from "$lib/components/QuickSwitcher.svelte";
+  import KeyboardShortcutsHelp from "$lib/components/KeyboardShortcutsHelp.svelte";
+  import { responsive } from "$lib/utils/responsive.svelte";
 
   // Get Convex client for mutations
   const client = useConvexClient();
@@ -53,6 +65,15 @@
       });
     }
     authStore.clearSession();
+
+    // Clear unread counts on logout
+    unreadCounts.clearAll();
+
+    // Clear persisted channel on logout
+    if (browser) {
+      localStorage.removeItem(ACTIVE_CHANNEL_KEY);
+    }
+
     goto("/auth/login");
   }
 
@@ -72,6 +93,9 @@
       await client.mutation(api.presence.heartbeat, args);
     }, getSessionToken);
   });
+
+  // Mobile drawer state
+  let drawerOpen = $state(false);
 
   // Theme state with localStorage persistence
   let isDark = $state(false);
@@ -95,8 +119,26 @@
     isDark = !isDark;
   }
 
-  // Channel state
+  // Channel state with localStorage persistence
+  const ACTIVE_CHANNEL_KEY = "flack_active_channel";
   let activeChannelId = $state<Id<"channels"> | null>(null);
+  let channelRestored = $state(false);
+
+  // Restore active channel from localStorage on mount
+  if (browser) {
+    const savedChannelId = localStorage.getItem(ACTIVE_CHANNEL_KEY);
+    if (savedChannelId) {
+      // Will be validated once channels load
+      activeChannelId = savedChannelId as Id<"channels">;
+    }
+  }
+
+  // Persist active channel to localStorage when it changes
+  $effect(() => {
+    if (browser && activeChannelId && channelRestored) {
+      localStorage.setItem(ACTIVE_CHANNEL_KEY, activeChannelId);
+    }
+  });
 
   // Queries
   const channelsQuery = useQuery(api.channels.list, {});
@@ -115,13 +157,64 @@
     () => (activeChannelId ? { channelId: activeChannelId } : "skip")
   );
 
-  // Auto-select first channel when loaded
+  // Auto-select channel when loaded (validate saved or fall back to first)
   $effect(() => {
     const channels = channelsQuery.data;
-    if (channels && channels.length > 0 && !activeChannelId) {
+    if (!channels || channels.length === 0) return;
+
+    // Check if saved channel exists in list
+    const savedChannelExists = activeChannelId && channels.some(c => c._id === activeChannelId);
+
+    if (savedChannelExists) {
+      // Saved channel is valid - mark restored and as read
+      channelRestored = true;
+      unreadCounts.markAsRead(activeChannelId!);
+    } else if (!channelRestored) {
+      // No valid saved channel - fall back to first
       activeChannelId = channels[0]._id;
+      channelRestored = true;
+      unreadCounts.markAsRead(channels[0]._id);
     }
   });
+
+  // Track message counts per channel for unread detection
+  // Store previous message counts to detect new messages
+  let prevMessageCounts = $state<Record<string, number>>({});
+
+  // Query for all channels' latest message to detect new messages
+  // This is a lightweight query that just returns the count/latest timestamp
+  const allChannelsMessagesQuery = useQuery(api.messages.listLatestPerChannel, {});
+
+  // Detect new messages in inactive channels and increment unread counts
+  $effect(() => {
+    const latestMessages = allChannelsMessagesQuery.data;
+    if (!latestMessages || !activeChannelId) return;
+
+    for (const channelData of latestMessages) {
+      const channelId = channelData.channelId;
+      const messageCount = channelData.messageCount;
+
+      // Skip the active channel - we're reading it
+      if (channelId === activeChannelId) {
+        prevMessageCounts[channelId] = messageCount;
+        continue;
+      }
+
+      const prevCount = prevMessageCounts[channelId] ?? 0;
+      if (messageCount > prevCount && prevCount > 0) {
+        // New messages arrived in an inactive channel
+        const newMessages = messageCount - prevCount;
+        unreadCounts.incrementUnread(channelId, newMessages);
+      }
+
+      prevMessageCounts[channelId] = messageCount;
+    }
+  });
+
+  // Get active channel name for empty state
+  const activeChannelName = $derived(
+    channelsQuery.data?.find(c => c._id === activeChannelId)?.name
+  );
 
   // Update presence when channel changes
   $effect(() => {
@@ -178,10 +271,12 @@
     // Step 3: Filter local queue to entries not yet confirmed by server
     // - Must match current channel (don't show messages from other channels)
     // - Must not be in confirmedIds (not yet acknowledged by server)
+    // - Must not be in "confirming" status (being removed, prevents duplicates)
     const stillPending = messageQueue.queue.filter(
       (entry) =>
         entry.channelId === activeChannelId &&
-        !confirmedIds.has(entry.clientMutationId)
+        !confirmedIds.has(entry.clientMutationId) &&
+        entry.status !== "confirming"
     );
 
     // Step 4: Convert server messages to unified MergedMessage format
@@ -209,6 +304,7 @@
         body: entry.body,
         status: entry.status, // "pending" | "sending" | "failed"
         error: entry.error,
+        retryCount: entry.retryCount,
       });
     });
 
@@ -234,7 +330,25 @@
   }
 
   function handleChannelSelect(channelId: Id<"channels">) {
+    // Only focus if actually switching channels (not initial load)
+    const isSwitch = activeChannelId !== null && activeChannelId !== channelId;
     activeChannelId = channelId;
+
+    // Mark the channel as read when switching to it
+    unreadCounts.markAsRead(channelId);
+
+    // Close drawer on mobile after selection
+    if (responsive.isMobile) {
+      drawerOpen = false;
+    }
+
+    // Focus message input after channel switch for keyboard users
+    // Use requestAnimationFrame to ensure DOM has updated
+    if (isSwitch) {
+      requestAnimationFrame(() => {
+        chatInputRef?.focus();
+      });
+    }
   }
 
   // Handle retry of failed messages
@@ -245,116 +359,244 @@
   // Chat input ref for keyboard shortcuts
   let chatInputRef: HTMLTextAreaElement | undefined = $state();
 
+  // Modal states
+  let quickSwitcherOpen = $state(false);
+  let shortcutsHelpOpen = $state(false);
+
   // Global keyboard shortcuts
   function handleGlobalKeydown(e: KeyboardEvent) {
+    // Don't trigger shortcuts when typing in inputs (except for meta keys)
+    const isTyping = document.activeElement instanceof HTMLInputElement ||
+                     document.activeElement instanceof HTMLTextAreaElement;
+
+    // Cmd/Ctrl+K to open quick switcher
+    if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      e.preventDefault();
+      quickSwitcherOpen = true;
+      return;
+    }
+
     // Cmd/Ctrl+N to focus message input
     if ((e.metaKey || e.ctrlKey) && e.key === "n") {
       e.preventDefault();
       chatInputRef?.focus();
+      return;
     }
-    // Escape to blur
+
+    // Don't trigger non-meta shortcuts when typing
+    if (isTyping) return;
+
+    // ? to show keyboard shortcuts help
+    if (e.key === "?" && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
+      shortcutsHelpOpen = true;
+      return;
+    }
+
+    // Escape to close modals or blur
     if (e.key === "Escape") {
-      (document.activeElement as HTMLElement)?.blur();
+      if (quickSwitcherOpen) {
+        quickSwitcherOpen = false;
+      } else if (shortcutsHelpOpen) {
+        shortcutsHelpOpen = false;
+      } else {
+        (document.activeElement as HTMLElement)?.blur();
+      }
     }
   }
 </script>
 
 <svelte:window onkeydown={handleGlobalKeydown} />
 
+<!-- Quick Switcher Modal -->
+{#if channelsQuery.data}
+  <QuickSwitcher
+    channels={channelsQuery.data}
+    isOpen={quickSwitcherOpen}
+    onSelect={handleChannelSelect}
+    onClose={() => quickSwitcherOpen = false}
+  />
+{/if}
+
+<!-- Keyboard Shortcuts Help Modal -->
+<KeyboardShortcutsHelp
+  isOpen={shortcutsHelpOpen}
+  onClose={() => shortcutsHelpOpen = false}
+/>
+
+<!-- Skip Link - first focusable element for keyboard users -->
+<SkipLink href="#main-content" label="Skip to messages" />
+
 <OfflineIndicator isOnline={messageQueue.isOnline} />
 <QueueStatus
   queueCount={messageQueue.queue.length}
   isSyncing={messageQueue.isSyncing}
 />
+<PersistenceWarning isPersistenceEnabled={messageQueue.isPersistenceEnabled} />
+<StorageWarning
+  isQuotaExceeded={messageQueue.isQuotaExceeded}
+  isQueueFull={messageQueue.isQueueFull}
+/>
 
-<div class="flex min-h-screen">
-  <!-- Sidebar with extra top padding for macOS traffic lights (40px = pt-10) -->
-  <aside class="w-64 bg-[var(--bg-secondary)] p-4 pt-10 flex flex-col">
-    <h2 class="text-lg font-bold mb-4">Flack</h2>
+<!-- Sidebar content (shared between desktop aside and mobile drawer) -->
+{#snippet sidebarContent()}
+  <h2 class="text-lg font-bold mb-4">Flack</h2>
 
-    <div class="text-xs text-[var(--text-secondary)] uppercase mb-2">
-      Channels
-    </div>
+  <div class="text-xs text-[var(--text-secondary)] uppercase mb-2">
+    Channels
+  </div>
 
-    {#if channelsQuery.data}
-      <ChannelList
-        channels={channelsQuery.data}
-        {activeChannelId}
-        onSelect={handleChannelSelect}
-      />
-    {:else if channelsQuery.isLoading}
-      <div class="text-sm text-[var(--text-secondary)]">Loading...</div>
-    {:else}
-      <div class="text-sm text-[var(--text-secondary)]">No channels yet</div>
-    {/if}
+  {#if channelsQuery.error}
+    <ErrorBoundary
+      error={channelsQuery.error}
+      context="loading channels"
+    />
+  {:else if channelsQuery.data}
+    <ChannelList
+      channels={channelsQuery.data}
+      {activeChannelId}
+      onSelect={handleChannelSelect}
+    />
+  {:else if channelsQuery.isLoading}
+    <LoadingSkeleton variant="channel" count={5} />
+  {:else if channelsQuery.data?.length === 0}
+    <EmptyState variant="channels" />
+  {/if}
 
-    <!-- Online Users -->
-    {#if activeChannelId && onlineUsersQuery.data}
-      <OnlineUsers onlineUsers={onlineUsersQuery.data} />
-    {/if}
+  <!-- Online Users -->
+  {#if activeChannelId && onlineUsersQuery.data}
+    <OnlineUsers onlineUsers={onlineUsersQuery.data} />
+  {/if}
 
-    <!-- Spacer -->
-    <div class="flex-1"></div>
+  <!-- Spacer -->
+  <div class="flex-1"></div>
 
-    <!-- User Info & Actions -->
-    <div class="border-t border-[var(--border-default)] pt-4 mt-4 space-y-2">
-      {#if authStore.user}
-        <div class="px-2 py-1">
-          <div class="text-sm font-medium truncate">{authStore.user.name}</div>
-          <div class="text-xs text-[var(--text-tertiary)] truncate">
-            {authStore.user.email}
-          </div>
-        </div>
-        <button
-          onclick={handleLogout}
-          class="w-full flex items-center gap-2 px-3 py-2 rounded text-sm text-[var(--text-secondary)] hover:bg-red-500/10 hover:text-red-500 transition-colors"
-        >
-          Sign out
-        </button>
-      {:else if !authStore.isLoading}
-        <a
-          href="/auth/login"
-          class="block w-full text-center px-3 py-2 bg-volt text-white rounded text-sm hover:bg-volt/90 transition-colors"
-        >
-          Sign in
-        </a>
-      {/if}
-
-      <!-- Theme Toggle -->
-      <button
-        onclick={toggleTheme}
-        class="w-full flex items-center gap-2 px-3 py-2 rounded text-sm text-[var(--text-secondary)] hover:bg-volt/10 hover:text-volt transition-colors"
-      >
-        {#if isDark}
-          <span>Light Mode</span>
-        {:else}
-          <span>Dark Mode</span>
-        {/if}
-      </button>
-    </div>
-  </aside>
-
-  <!-- Main Content -->
-  <main class="flex-1 bg-[var(--bg-primary)] flex flex-col">
-    {#if activeChannelId}
-      <MessageList messages={mergedMessages} onRetry={handleRetry} />
-      {#if typingUsersQuery.data}
-        <TypingIndicator
-          typingUsers={typingUsersQuery.data}
-          currentSessionId={presenceManager.getSessionId()}
-        />
-      {/if}
-      <ChatInput
-        onSend={handleSend}
-        onTyping={(isTyping) => presenceManager.setTyping(isTyping)}
-        bind:inputRef={chatInputRef}
-      />
-    {:else}
-      <div
-        class="flex-1 flex items-center justify-center text-[var(--text-secondary)]"
-      >
-        Select a channel to start chatting
+  <!-- User Info & Actions -->
+  <div class="border-t border-[var(--border-default)] pt-4 mt-4 space-y-2">
+    {#if authStore.isLoading}
+      <!-- Loading skeleton for user info -->
+      <div class="px-2 py-1 animate-pulse" aria-hidden="true">
+        <div class="h-4 w-24 rounded bg-[var(--bg-tertiary)] mb-1.5"></div>
+        <div class="h-3 w-32 rounded bg-[var(--bg-tertiary)]"></div>
       </div>
+      <div class="h-9 rounded bg-[var(--bg-tertiary)] animate-pulse" aria-hidden="true"></div>
+    {:else if authStore.user}
+      <div class="px-2 py-1">
+        <div class="text-sm font-medium truncate">{authStore.user.name}</div>
+        <div class="text-xs text-[var(--text-tertiary)] truncate">
+          {authStore.user.email}
+        </div>
+      </div>
+      <button
+        onclick={handleLogout}
+        aria-label="Sign out"
+        class="w-full flex items-center gap-2 px-3 py-2 rounded text-sm text-[var(--text-secondary)] hover:bg-red-500/10 hover:text-red-500 transition-colors"
+      >
+        Sign out
+      </button>
+    {:else}
+      <a
+        href="/auth/login"
+        class="block w-full text-center px-3 py-2 bg-volt text-white rounded text-sm hover:bg-volt/90 transition-colors"
+      >
+        Sign in
+      </a>
     {/if}
-  </main>
+
+    <!-- Theme Toggle -->
+    <button
+      onclick={toggleTheme}
+      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      class="w-full flex items-center gap-2 px-3 py-2 rounded text-sm text-[var(--text-secondary)] hover:bg-volt/10 hover:text-volt transition-colors"
+    >
+      {#if isDark}
+        <span>Light Mode</span>
+      {:else}
+        <span>Dark Mode</span>
+      {/if}
+    </button>
+  </div>
+{/snippet}
+
+<!-- Mobile Drawer (shown on mobile only) -->
+{#if responsive.isMobile}
+  <MobileDrawer bind:isOpen={drawerOpen}>
+    <div class="flex flex-col h-full">
+      {@render sidebarContent()}
+    </div>
+  </MobileDrawer>
+{/if}
+
+<div class="flex min-h-screen flex-col">
+  <!-- Mobile Header (shown on mobile only) -->
+  {#if responsive.isMobile}
+    <header class="fixed top-0 left-0 right-0 z-30 flex items-center gap-3 p-3 bg-[var(--bg-secondary)] border-b border-[var(--border-default)]">
+      <HamburgerButton isOpen={drawerOpen} onclick={() => drawerOpen = !drawerOpen} />
+      <h1 class="text-lg font-bold">Flack</h1>
+      {#if activeChannelId && channelsQuery.data}
+        {@const activeChannel = channelsQuery.data.find(c => c._id === activeChannelId)}
+        {#if activeChannel}
+          <span class="text-[var(--text-secondary)]">#{activeChannel.name}</span>
+        {/if}
+      {/if}
+    </header>
+    <!-- Spacer for fixed header -->
+    <div class="h-14"></div>
+  {/if}
+
+  <div class="flex flex-1">
+    <!-- Desktop Sidebar (hidden on mobile) -->
+    {#if !responsive.isMobile}
+      <aside
+        role="complementary"
+        aria-label="Sidebar"
+        class="w-64 bg-[var(--bg-secondary)] p-4 flex flex-col"
+      >
+        {@render sidebarContent()}
+      </aside>
+    {/if}
+
+    <!-- Main Content -->
+    <main
+      id="main-content"
+      role="main"
+      aria-label="Messages"
+      class="flex-1 bg-[var(--bg-primary)] flex flex-col"
+    >
+      {#if activeChannelId}
+        {#if messagesQuery.error}
+          <div class="flex-1 flex items-center justify-center">
+            <ErrorBoundary
+              error={messagesQuery.error}
+              context="loading messages"
+            />
+          </div>
+        {:else if messagesQuery.isLoading && mergedMessages.length === 0}
+          <div class="flex-1 flex flex-col items-center justify-center gap-3" aria-busy="true">
+            <div class="w-8 h-8 border-3 border-[var(--text-tertiary)] border-t-volt rounded-full animate-spin"></div>
+            <span class="text-sm text-[var(--text-secondary)]">Loading messages...</span>
+          </div>
+        {:else}
+          <MessageList messages={mergedMessages} onRetry={handleRetry} channelName={activeChannelName} />
+        {/if}
+        {#if typingUsersQuery.data}
+          <TypingIndicator
+            typingUsers={typingUsersQuery.data}
+            currentSessionId={presenceManager.getSessionId()}
+          />
+        {/if}
+        <ChatInput
+          onSend={handleSend}
+          onTyping={(isTyping) => presenceManager.setTyping(isTyping)}
+          bind:inputRef={chatInputRef}
+        />
+      {:else}
+        <div
+          class="flex-1 flex items-center justify-center text-[var(--text-secondary)]"
+        >
+          Select a channel to start chatting
+        </div>
+      {/if}
+    </main>
+  </div>
 </div>

@@ -8,10 +8,49 @@
 
   let email = $state("");
   let code = $state("");
-  let status = $state<"idle" | "sending" | "sent" | "verifying" | "error">(
+  let status = $state<"idle" | "sending" | "sent" | "verifying" | "error" | "rate-limited">(
     "idle"
   );
   let errorMessage = $state("");
+  let rateLimitCountdown = $state(0);
+  let countdownInterval: ReturnType<typeof setInterval> | null = null;
+
+  // Parse rate limit error from ConvexError data
+  function parseRateLimitError(error: unknown): number | null {
+    if (error && typeof error === "object" && "data" in error) {
+      const data = (error as { data: unknown }).data;
+      if (data && typeof data === "object" && "retryAfterSeconds" in data) {
+        return (data as { retryAfterSeconds: number }).retryAfterSeconds;
+      }
+    }
+    // Also check error message for "Too many" pattern
+    if (error instanceof Error && error.message.toLowerCase().includes("too many")) {
+      return 60; // Default to 60 seconds if can't parse
+    }
+    return null;
+  }
+
+  function startRateLimitCountdown(seconds: number) {
+    rateLimitCountdown = seconds;
+    status = "rate-limited";
+
+    // Clear any existing interval
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+    }
+
+    countdownInterval = setInterval(() => {
+      rateLimitCountdown--;
+      if (rateLimitCountdown <= 0) {
+        if (countdownInterval) {
+          clearInterval(countdownInterval);
+          countdownInterval = null;
+        }
+        status = "idle";
+        errorMessage = "";
+      }
+    }, 1000);
+  }
 
   // Redirect if already logged in
   $effect(() => {
@@ -36,9 +75,16 @@
       await client.mutation(api.auth.sendMagicLink, { email: email.trim() });
       status = "sent";
     } catch (error) {
-      status = "error";
-      errorMessage =
-        error instanceof Error ? error.message : "Failed to send login link";
+      // Check for rate limit error
+      const retryAfter = parseRateLimitError(error);
+      if (retryAfter !== null) {
+        errorMessage = `Too many requests. Please wait ${retryAfter} seconds.`;
+        startRateLimitCountdown(retryAfter);
+      } else {
+        status = "error";
+        errorMessage =
+          error instanceof Error ? error.message : "Failed to send login link";
+      }
     }
   }
 
@@ -117,7 +163,9 @@
             Using the desktop app? Enter the 6-digit code from your email:
           </p>
           <form onsubmit={handleCodeSubmit} class="space-y-4">
+            <label for="code" class="sr-only">6-digit verification code</label>
             <input
+              id="code"
               type="text"
               bind:value={code}
               placeholder="000000"
@@ -125,11 +173,14 @@
               inputmode="numeric"
               pattern="[0-9]*"
               disabled={status === "verifying"}
+              aria-required="true"
+              aria-invalid={errorMessage ? "true" : undefined}
+              aria-describedby={errorMessage ? "code-error" : undefined}
               class="w-full px-4 py-3 text-center text-2xl font-mono tracking-widest rounded-lg border border-[var(--border-default)] bg-[var(--bg-secondary)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-volt focus:border-transparent disabled:opacity-50"
             />
 
             {#if errorMessage}
-              <p class="text-red-500 text-sm text-center">{errorMessage}</p>
+              <p id="code-error" role="alert" class="text-red-500 text-sm text-center">{errorMessage}</p>
             {/if}
 
             <button
@@ -183,18 +234,21 @@
             type="email"
             bind:value={email}
             placeholder="you@example.com"
-            disabled={status === "sending"}
-            class="w-full px-4 py-3 rounded-lg border border-[var(--border-default)] bg-[var(--bg-secondary)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-volt focus:border-transparent disabled:opacity-50"
+            disabled={status === "sending" || status === "rate-limited"}
+            aria-required="true"
+            aria-invalid={status === "error" || status === "rate-limited" ? "true" : undefined}
+            aria-describedby={status === "error" || status === "rate-limited" ? "email-error" : undefined}
+            class="w-full px-4 py-3 text-base rounded-lg border border-[var(--border-default)] bg-[var(--bg-secondary)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-volt focus:border-transparent disabled:opacity-50"
           />
         </div>
 
-        {#if status === "error"}
-          <p class="text-red-500 text-sm">{errorMessage}</p>
+        {#if status === "error" || status === "rate-limited"}
+          <p id="email-error" role="alert" class="text-red-500 text-sm">{errorMessage}</p>
         {/if}
 
         <button
           type="submit"
-          disabled={status === "sending"}
+          disabled={status === "sending" || status === "rate-limited"}
           class="w-full py-3 px-4 bg-volt text-white font-medium rounded-lg hover:bg-volt/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {#if status === "sending"}
@@ -214,6 +268,18 @@
               ></path>
             </svg>
             Sending...
+          {:else if status === "rate-limited"}
+            <!-- Clock icon + countdown -->
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24">
+              <path
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              ></path>
+            </svg>
+            Wait {rateLimitCountdown}s
           {:else}
             Continue with Email
           {/if}

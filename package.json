@@ -24,6 +24,7 @@
 		"@tailwindcss/vite": "^4.1.17",
 		"@tauri-apps/api": "^2",
 		"@tauri-apps/cli": "^2",
+		"@tauri-apps/plugin-store": "^2",
 		"@types/node": "^24.10.2",
 		"svelte": "^5.43.8",
 		"svelte-check": "^4.3.4",

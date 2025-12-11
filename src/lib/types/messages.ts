@@ -58,4 +58,5 @@ export interface MergedMessage {
   body: string;
   status: MessageStatus;
   error?: string;
+  retryCount?: number;
 }

@@ -1,10 +1,21 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { getAuthenticatedUser } from "./authHelpers";
+import { withAuthQuery, withAuthMutation } from "./authMiddleware";
+import { checkMembership } from "./channelMembers";
 
-export const list = query({
+/**
+ * List messages in a channel.
+ * Requires authentication and channel membership.
+ */
+export const list = withAuthQuery({
   args: { channelId: v.id("channels") },
   handler: async (ctx, args) => {
+    // Verify channel membership
+    const isMember = await checkMembership(ctx, args.channelId, ctx.user._id);
+    if (!isMember) {
+      throw new Error("Unauthorized: Not a member of this channel");
+    }
+
     return await ctx.db
       .query("messages")
       .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
@@ -12,16 +23,24 @@ export const list = query({
   },
 });
 
-export const send = mutation({
+/**
+ * Send a message to a channel.
+ * Requires authentication and channel membership.
+ * Maintains idempotency via clientMutationId.
+ */
+export const send = withAuthMutation({
   args: {
     channelId: v.id("channels"),
     body: v.string(),
     clientMutationId: v.string(),
-    sessionToken: v.optional(v.string()), // Optional: for authenticated users
-    // Fallback for unauthenticated users
-    authorName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Verify channel membership
+    const isMember = await checkMembership(ctx, args.channelId, ctx.user._id);
+    if (!isMember) {
+      throw new Error("Unauthorized: Not a member of this channel");
+    }
+
     // Check for existing message with same clientMutationId (idempotency)
     const existing = await ctx.db
       .query("messages")
@@ -35,46 +54,65 @@ export const send = mutation({
       return existing._id;
     }
 
-    // Try to get authenticated user first
-    const authUser = await getAuthenticatedUser(ctx, args.sessionToken);
-
-    let userId;
-    let authorName;
-
-    if (authUser) {
-      // Use authenticated user
-      userId = authUser._id;
-      authorName = authUser.name;
-    } else {
-      // Fall back to anonymous user for unauthenticated users
-      authorName = args.authorName ?? "Anonymous";
-
-      // Check if we have a default anonymous user, if not create one
-      const existingUser = await ctx.db
-        .query("users")
-        .withIndex("by_email", (q) => q.eq("email", "anonymous@flack.local"))
-        .first();
-
-      if (existingUser) {
-        userId = existingUser._id;
-      } else {
-        userId = await ctx.db.insert("users", {
-          name: "Anonymous",
-          email: "anonymous@flack.local",
-          isTemp: true,
-        });
-      }
-    }
-
-    // Insert new message
+    // Insert new message using authenticated user
     const messageId = await ctx.db.insert("messages", {
       channelId: args.channelId,
-      userId,
-      authorName,
+      userId: ctx.user._id,
+      authorName: ctx.user.name,
       body: args.body,
       clientMutationId: args.clientMutationId,
     });
 
     return messageId;
+  },
+});
+
+/**
+ * Legacy unauthenticated message listing for backwards compatibility.
+ * TODO: Remove once all clients are updated to use authenticated endpoints.
+ * @deprecated Use authenticated `list` query instead
+ */
+export const listPublic = query({
+  args: { channelId: v.id("channels") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("messages")
+      .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
+      .collect();
+  },
+});
+
+/**
+ * List message counts per channel for unread tracking.
+ * Returns channelId and message count for all channels the user has access to.
+ * Lightweight query for detecting new messages in inactive channels.
+ */
+export const listLatestPerChannel = withAuthQuery({
+  args: {},
+  handler: async (ctx) => {
+    // Get all channels the user is a member of
+    const memberships = await ctx.db
+      .query("channelMembers")
+      .withIndex("by_user", (q) => q.eq("userId", ctx.user._id))
+      .collect();
+
+    const channelIds = memberships.map((m) => m.channelId);
+
+    // Get message counts for each channel
+    const results = await Promise.all(
+      channelIds.map(async (channelId) => {
+        const messages = await ctx.db
+          .query("messages")
+          .withIndex("by_channel", (q) => q.eq("channelId", channelId))
+          .collect();
+
+        return {
+          channelId,
+          messageCount: messages.length,
+        };
+      })
+    );
+
+    return results;
   },
 });

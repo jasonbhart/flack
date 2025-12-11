@@ -1,6 +1,29 @@
 <script lang="ts">
   let { isOnline }: { isOnline: boolean } = $props();
+
+  // Track previous online state to announce reconnection
+  let wasOffline = $state(false);
+
+  $effect(() => {
+    if (!isOnline) {
+      wasOffline = true;
+    }
+  });
 </script>
+
+<!-- Live region for offline/online status announcements -->
+<div
+  role="status"
+  aria-live="assertive"
+  aria-atomic="true"
+  class="sr-only"
+>
+  {#if !isOnline}
+    You are offline. Messages will be sent when you reconnect.
+  {:else if wasOffline}
+    You are back online.
+  {/if}
+</div>
 
 {#if !isOnline}
   <div

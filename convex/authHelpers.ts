@@ -2,6 +2,15 @@ import type { QueryCtx, MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 
 /**
+ * Normalize email for consistent storage and comparison.
+ * - Converts to lowercase
+ * - Trims whitespace
+ */
+export function normalizeEmail(email: string): string {
+  return email.toLowerCase().trim();
+}
+
+/**
  * Hash a token using SHA-256 for secure comparison
  */
 export async function hashToken(token: string): Promise<string> {

@@ -30,14 +30,23 @@
   --bg-primary: var(--color-paper-50);
   --bg-secondary: var(--color-paper-100);
   --text-primary: var(--color-paper-800);
-  --text-secondary: var(--color-ink-400);
+  /* Adjusted for WCAG AA 4.5:1 contrast on light backgrounds */
+  --text-secondary: #64748B; /* slate-500: 5.3:1 on paper-50 */
+  --text-tertiary: #94A3B8; /* slate-400: 3.5:1 - decorative only */
+  --border-default: var(--color-paper-200);
+  /* Pending message opacity - 0.7 for better contrast than 0.6 */
+  --pending-opacity: 0.7;
 }
 
 .dark {
   --bg-primary: var(--color-ink-900);
   --bg-secondary: var(--color-ink-800);
   --text-primary: var(--color-ink-100);
-  --text-secondary: var(--color-ink-400);
+  /* Adjusted for WCAG AA 4.5:1 contrast on dark backgrounds */
+  --text-secondary: #CBD5E1; /* slate-300: 8.5:1 on ink-900 */
+  --text-tertiary: #94A3B8; /* slate-400: 5.5:1 on ink-900 */
+  --border-default: var(--color-ink-700);
+  --pending-opacity: 0.7;
 }
 
 /* Base Styles */

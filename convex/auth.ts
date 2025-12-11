@@ -2,6 +2,9 @@ import { mutation, query, internalMutation } from "./_generated/server";
 import { components } from "./_generated/api";
 import { Resend } from "@convex-dev/resend";
 import { v } from "convex/values";
+import { withAuthMutation } from "./authMiddleware";
+import { checkMultipleRateLimits, RATE_LIMITS } from "./rateLimiter";
+import { hashToken, normalizeEmail } from "./authHelpers";
 
 // Token expiry times
 const MAGIC_LINK_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes
@@ -19,14 +22,6 @@ function generateToken(): string {
   return Array.from(array, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Hash a token using SHA-256 for secure storage
-async function hashToken(token: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(token);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
 
 // Generate a 6-digit verification code for desktop/manual entry
 function generateCode(): string {
@@ -40,43 +35,105 @@ function generateCode(): string {
 const EMAIL_RATE_LIMIT_MS = 60 * 1000; // 1 minute between requests
 
 /**
- * Send a magic link to the user's email
+ * Get or create a user by email, handling race conditions.
+ * If two requests try to create the same user simultaneously,
+ * the second one will find the user created by the first.
+ */
+async function getOrCreateUser(
+  ctx: { db: import("./_generated/server").MutationCtx["db"] },
+  email: string,
+  options: { upgradeTemp?: boolean } = {}
+): Promise<import("./_generated/dataModel").Doc<"users">> {
+  // First, try to find existing user
+  let user = await ctx.db
+    .query("users")
+    .withIndex("by_email", (q) => q.eq("email", email))
+    .first();
+
+  if (user) {
+    // If upgrading temp user to authenticated
+    if (options.upgradeTemp && user.isTemp) {
+      await ctx.db.patch(user._id, { isTemp: false });
+      user = await ctx.db.get(user._id);
+    }
+    return user!;
+  }
+
+  // User doesn't exist - try to create
+  try {
+    const userId = await ctx.db.insert("users", {
+      email,
+      name: email.split("@")[0], // Default name from email
+      isTemp: false,
+    });
+    const newUser = await ctx.db.get(userId);
+    return newUser!;
+  } catch (error) {
+    // If insert failed due to race condition (another request created the user),
+    // try to find the user again
+    const existingUser = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .first();
+
+    if (existingUser) {
+      // Found the user created by another request
+      if (options.upgradeTemp && existingUser.isTemp) {
+        await ctx.db.patch(existingUser._id, { isTemp: false });
+        return (await ctx.db.get(existingUser._id))!;
+      }
+      return existingUser;
+    }
+
+    // If still no user, re-throw the error
+    throw error;
+  }
+}
+
+/**
+ * Send a magic link to the user's email.
+ * Rate limited: 1/min per email, 5/hour per email, 10/min per IP.
  */
 export const sendMagicLink = mutation({
   args: {
     email: v.string(),
+    clientIp: v.optional(v.string()), // Optional: passed from client for IP rate limiting
   },
   handler: async (ctx, args) => {
-    const email = args.email.toLowerCase().trim();
+    const email = normalizeEmail(args.email);
 
     // Basic email validation
     if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
       throw new Error("Invalid email address");
     }
 
-    // Rate limiting: check for recent unused token for this email
-    // If one exists and isn't expired, don't send another email
-    // Use .order("desc") to get the NEWEST token first for accurate rate limiting
-    const recentToken = await ctx.db
-      .query("authTokens")
-      .withIndex("by_email", (q) => q.eq("email", email))
-      .order("desc")
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("used"), false),
-          q.gt(q.field("expiresAt"), Date.now())
-        )
-      )
-      .first();
+    // Check rate limits before proceeding
+    const rateLimitChecks = [
+      { key: `email:${email}`, type: "minute" as const, limit: RATE_LIMITS.magicLink.perMinutePerEmail },
+      { key: `email:${email}`, type: "hour" as const, limit: RATE_LIMITS.magicLink.perHourPerEmail },
+    ];
 
-    // If a valid token was sent recently, silently succeed to prevent enumeration
-    // but don't send another email (rate limiting)
-    if (recentToken) {
-      const tokenAge = Date.now() - (recentToken.expiresAt - MAGIC_LINK_EXPIRY_MS);
-      if (tokenAge < EMAIL_RATE_LIMIT_MS) {
-        // Token is less than 1 minute old, don't send another
-        return { success: true };
-      }
+    // Add IP rate limit if provided
+    if (args.clientIp) {
+      rateLimitChecks.push({
+        key: `ip:${args.clientIp}`,
+        type: "minute" as const,
+        limit: RATE_LIMITS.magicLink.perMinutePerIp,
+      });
+    }
+
+    const rateLimitResult = await checkMultipleRateLimits(ctx, rateLimitChecks);
+
+    if (!rateLimitResult.allowed) {
+      // Return 429-style error with retry info
+      // Don't reveal which limit was hit to prevent enumeration
+      throw new Error(
+        JSON.stringify({
+          code: 429,
+          message: "Too many requests. Please try again later.",
+          retryAfterSeconds: rateLimitResult.retryAfterSeconds,
+        })
+      );
     }
 
     // Generate token (for magic link) and code (for manual entry)
@@ -165,24 +222,8 @@ export const verifyMagicLink = mutation({
     // Mark token as used
     await ctx.db.patch(authToken._id, { used: true });
 
-    // Find or create user
-    let user = await ctx.db
-      .query("users")
-      .withIndex("by_email", (q) => q.eq("email", authToken.email))
-      .first();
-
-    if (!user) {
-      // Create new user
-      const userId = await ctx.db.insert("users", {
-        email: authToken.email,
-        name: authToken.email.split("@")[0], // Default name from email
-        isTemp: false, // Real authenticated user
-      });
-      user = await ctx.db.get(userId);
-    } else if (user.isTemp) {
-      // Upgrade temp user to authenticated
-      await ctx.db.patch(user._id, { isTemp: false });
-    }
+    // Get or create user (handles race conditions)
+    const user = await getOrCreateUser(ctx, authToken.email, { upgradeTemp: true });
 
     // Create session with hashed token
     const sessionToken = generateToken();
@@ -219,7 +260,7 @@ export const verifyCode = mutation({
     code: v.string(),
   },
   handler: async (ctx, args) => {
-    const email = args.email.toLowerCase().trim();
+    const email = normalizeEmail(args.email);
     const code = args.code.replace(/\s/g, ""); // Remove any spaces
 
     // Validate code format
@@ -255,10 +296,17 @@ export const verifyCode = mutation({
     const authToken = validTokens.find((t) => t.code === codeHash);
 
     if (!authToken) {
-      // Increment attempts on all valid tokens for this email (brute-force protection)
-      for (const token of validTokens) {
-        await ctx.db.patch(token._id, {
-          attempts: (token.attempts ?? 0) + 1,
+      // Brute-force protection: increment attempts only on the MOST RECENT token
+      // This prevents attackers from locking out all tokens with random guesses
+      // while still protecting against brute-force on the active code
+      if (validTokens.length > 0) {
+        // Sort by creation time (descending) and increment only the newest
+        const sortedTokens = [...validTokens].sort(
+          (a, b) => b._creationTime - a._creationTime
+        );
+        const newestToken = sortedTokens[0];
+        await ctx.db.patch(newestToken._id, {
+          attempts: (newestToken.attempts ?? 0) + 1,
         });
       }
       throw new Error("Invalid or expired code");
@@ -267,22 +315,8 @@ export const verifyCode = mutation({
     // Mark token as used
     await ctx.db.patch(authToken._id, { used: true });
 
-    // Find or create user (same logic as verifyMagicLink)
-    let user = await ctx.db
-      .query("users")
-      .withIndex("by_email", (q) => q.eq("email", authToken.email))
-      .first();
-
-    if (!user) {
-      const userId = await ctx.db.insert("users", {
-        email: authToken.email,
-        name: authToken.email.split("@")[0],
-        isTemp: false,
-      });
-      user = await ctx.db.get(userId);
-    } else if (user.isTemp) {
-      await ctx.db.patch(user._id, { isTemp: false });
-    }
+    // Get or create user (handles race conditions)
+    const user = await getOrCreateUser(ctx, authToken.email, { upgradeTemp: true });
 
     // Create session with hashed token
     const sessionToken = generateToken();
@@ -371,37 +405,47 @@ export const logout = mutation({
 });
 
 /**
- * Update user profile
+ * Update user profile.
+ * Uses auth middleware - users can only update their own profile.
  */
-export const updateProfile = mutation({
+export const updateProfile = withAuthMutation({
   args: {
-    sessionToken: v.string(),
     name: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Hash the incoming token to verify session
-    const sessionTokenHash = await hashToken(args.sessionToken);
-
-    const session = await ctx.db
-      .query("sessions")
-      .withIndex("by_token", (q) => q.eq("token", sessionTokenHash))
-      .first();
-
-    if (!session || session.expiresAt < Date.now()) {
-      throw new Error("Not authenticated");
-    }
-
-    // Update user
+    // Update authenticated user's profile
     const updates: { name?: string } = {};
     if (args.name) {
       updates.name = args.name;
     }
 
     if (Object.keys(updates).length > 0) {
-      await ctx.db.patch(session.userId, updates);
+      await ctx.db.patch(ctx.user._id, updates);
     }
 
     return { success: true };
+  },
+});
+
+/**
+ * Revoke all sessions for a user (logout all devices).
+ * Requires authentication - users can only revoke their own sessions.
+ */
+export const revokeAllSessions = withAuthMutation({
+  args: {},
+  handler: async (ctx, args) => {
+    // Find all sessions for this user
+    const sessions = await ctx.db
+      .query("sessions")
+      .withIndex("by_user", (q) => q.eq("userId", ctx.user._id))
+      .collect();
+
+    // Delete all sessions
+    for (const session of sessions) {
+      await ctx.db.delete(session._id);
+    }
+
+    return { revokedCount: sessions.length };
   },
 });
 
@@ -433,9 +477,21 @@ export const cleanupAuth = internalMutation({
       await ctx.db.delete(session._id);
     }
 
+    // Clean up orphan sessions (sessions for deleted users)
+    const allSessions = await ctx.db.query("sessions").collect();
+    let orphanCount = 0;
+    for (const session of allSessions) {
+      const user = await ctx.db.get(session.userId);
+      if (!user) {
+        await ctx.db.delete(session._id);
+        orphanCount++;
+      }
+    }
+
     return {
       deletedTokens: expiredTokens.length,
       deletedSessions: expiredSessions.length,
+      deletedOrphanSessions: orphanCount,
     };
   },
 });
