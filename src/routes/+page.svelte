@@ -464,35 +464,49 @@
 
 <svelte:window onkeydown={handleGlobalKeydown} />
 
-<!-- Quick Switcher Modal -->
-{#if channelsQuery.data}
-  <QuickSwitcher
-    channels={channelsQuery.data}
-    isOpen={quickSwitcherOpen}
-    onSelect={handleChannelSelect}
-    onClose={() => quickSwitcherOpen = false}
+<!-- Auth loading state - show minimal UI while checking auth -->
+{#if sessionQuery.data === undefined}
+  <div class="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
+    <div class="flex flex-col items-center gap-3">
+      <div class="w-8 h-8 border-3 border-[var(--text-tertiary)] border-t-volt rounded-full animate-spin"></div>
+      <span class="text-sm text-[var(--text-secondary)]">Loading...</span>
+    </div>
+  </div>
+{:else if sessionQuery.data === null}
+  <!-- Redirecting to login (handled by $effect) - show nothing to prevent flash -->
+  <div class="min-h-screen bg-[var(--bg-primary)]"></div>
+{:else}
+  <!-- Authenticated - render full app -->
+
+  <!-- Quick Switcher Modal -->
+  {#if channelsQuery.data}
+    <QuickSwitcher
+      channels={channelsQuery.data}
+      isOpen={quickSwitcherOpen}
+      onSelect={handleChannelSelect}
+      onClose={() => quickSwitcherOpen = false}
+    />
+  {/if}
+
+  <!-- Keyboard Shortcuts Help Modal -->
+  <KeyboardShortcutsHelp
+    isOpen={shortcutsHelpOpen}
+    onClose={() => shortcutsHelpOpen = false}
   />
-{/if}
 
-<!-- Keyboard Shortcuts Help Modal -->
-<KeyboardShortcutsHelp
-  isOpen={shortcutsHelpOpen}
-  onClose={() => shortcutsHelpOpen = false}
-/>
+  <!-- Skip Link - first focusable element for keyboard users -->
+  <SkipLink href="#main-content" label="Skip to messages" />
 
-<!-- Skip Link - first focusable element for keyboard users -->
-<SkipLink href="#main-content" label="Skip to messages" />
-
-<OfflineIndicator isOnline={messageQueue.isOnline} />
-<QueueStatus
-  queueCount={messageQueue.queue.length}
-  isSyncing={messageQueue.isSyncing}
-/>
-<PersistenceWarning isPersistenceEnabled={messageQueue.isPersistenceEnabled} />
-<StorageWarning
-  isQuotaExceeded={messageQueue.isQuotaExceeded}
-  isQueueFull={messageQueue.isQueueFull}
-/>
+  <OfflineIndicator isOnline={messageQueue.isOnline} />
+  <QueueStatus
+    queueCount={messageQueue.queue.length}
+    isSyncing={messageQueue.isSyncing}
+  />
+  <PersistenceWarning isPersistenceEnabled={messageQueue.isPersistenceEnabled} />
+  <StorageWarning
+    isQuotaExceeded={messageQueue.isQuotaExceeded}
+    isQueueFull={messageQueue.isQueueFull}
+  />
 
 <!-- Sidebar content (shared between desktop aside and mobile drawer) -->
 {#snippet sidebarContent()}
@@ -688,3 +702,6 @@
     onClose={() => inviteModalOpen = false}
   />
 {/if}
+
+{/if}
+<!-- End of auth check -->

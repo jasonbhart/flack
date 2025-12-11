@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { useMutation, useQuery } from "convex/svelte";
+  import { useConvexClient, useQuery } from "convex-svelte";
   import { api } from "../../../convex/_generated/api";
   import type { Id } from "../../../convex/_generated/dataModel";
   import FocusTrap from "./FocusTrap.svelte";
@@ -14,14 +14,14 @@
 
   let { isOpen, channelId, channelName, sessionToken, onClose }: Props = $props();
 
+  // Get Convex client for mutations
+  const client = useConvexClient();
+
   // State
   let inviteUrl = $state<string | null>(null);
   let copied = $state(false);
   let isGenerating = $state(false);
   let error = $state<string | null>(null);
-
-  // Mutation
-  const createInvite = useMutation(api.channelInvites.create);
 
   // Query existing invites
   const invitesQuery = useQuery(
@@ -56,7 +56,7 @@
     error = null;
 
     try {
-      const result = await createInvite({
+      const result = await client.mutation(api.channelInvites.create, {
         sessionToken,
         channelId,
       });

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { useMutation } from "convex/svelte";
+  import { useConvexClient } from "convex-svelte";
   import { api } from "../../../convex/_generated/api";
   import type { Id } from "../../../convex/_generated/dataModel";
   import FocusTrap from "./FocusTrap.svelte";
@@ -13,6 +13,9 @@
 
   let { isOpen, sessionToken, onClose, onCreate }: Props = $props();
 
+  // Get Convex client for mutations
+  const client = useConvexClient();
+
   // Form state
   let channelName = $state("");
   let isCreating = $state(false);
@@ -20,9 +23,6 @@
 
   // Input ref for focus
   let inputRef: HTMLInputElement | undefined = $state();
-
-  // Mutation
-  const createChannel = useMutation(api.channels.create);
 
   // Reset state when modal opens
   $effect(() => {
@@ -49,7 +49,7 @@
     error = null;
 
     try {
-      const result = await createChannel({
+      const result = await client.mutation(api.channels.create, {
         sessionToken,
         name: trimmedName,
       });
