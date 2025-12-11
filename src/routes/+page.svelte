@@ -34,12 +34,12 @@
 
   // Check session on load
   // Skip the query while authStore.sessionToken is undefined (still loading from storage)
-  // This prevents the race condition where we query with null token before storage check completes
+  // or null (logged out) - only query when we have an actual token
   const sessionQuery = useQuery(
     api.auth.getSession,
-    () => authStore.sessionToken === undefined
-      ? "skip"
-      : { sessionToken: authStore.sessionToken ?? undefined }
+    () => authStore.sessionToken
+      ? { sessionToken: authStore.sessionToken }
+      : "skip"
   );
 
   // Update auth store when session query resolves
@@ -55,9 +55,11 @@
 
   // Redirect to login if not authenticated
   $effect(() => {
-    // Wait for session query to resolve (not undefined = loading)
-    // null = no session, object = valid session
-    if (sessionQuery.data === null && browser) {
+    // authStore.sessionToken states:
+    // - undefined: still loading from storage (don't redirect yet)
+    // - null: confirmed no token (redirect to login)
+    // - string: have token, wait for session query
+    if (authStore.sessionToken === null && browser) {
       goto("/auth/login");
     }
   });
@@ -469,8 +471,30 @@
 <svelte:window onkeydown={handleGlobalKeydown} />
 
 <!-- Auth loading state - show minimal UI while checking auth -->
-<!-- Show loading if: token still loading from storage OR session query still in flight -->
-{#if authStore.sessionToken === undefined || sessionQuery.data === undefined}
+<!--
+  authStore.sessionToken states:
+  - undefined: loading from storage → show spinner
+  - null: no token → redirect to login (show blank)
+  - string: have token → check sessionQuery.data
+
+  sessionQuery.data states (when token exists):
+  - undefined: query in flight → show spinner
+  - null: token invalid → will clear and redirect
+  - object: valid session → show app
+-->
+{#if authStore.sessionToken === undefined}
+  <!-- Still loading token from storage -->
+  <div class="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
+    <div class="flex flex-col items-center gap-3">
+      <div class="w-8 h-8 border-3 border-[var(--text-tertiary)] border-t-volt rounded-full animate-spin"></div>
+      <span class="text-sm text-[var(--text-secondary)]">Loading...</span>
+    </div>
+  </div>
+{:else if authStore.sessionToken === null}
+  <!-- No token - redirecting to login -->
+  <div class="min-h-screen bg-[var(--bg-primary)]"></div>
+{:else if sessionQuery.data === undefined}
+  <!-- Have token, validating session -->
   <div class="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
     <div class="flex flex-col items-center gap-3">
       <div class="w-8 h-8 border-3 border-[var(--text-tertiary)] border-t-volt rounded-full animate-spin"></div>
@@ -478,7 +502,7 @@
     </div>
   </div>
 {:else if sessionQuery.data === null}
-  <!-- Redirecting to login (handled by $effect) - show nothing to prevent flash -->
+  <!-- Token invalid - will be cleared and redirected -->
   <div class="min-h-screen bg-[var(--bg-primary)]"></div>
 {:else}
   <!-- Authenticated - render full app -->
