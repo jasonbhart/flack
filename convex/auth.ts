@@ -11,9 +11,10 @@ const MAGIC_LINK_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes
 const SESSION_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const CODE_LENGTH = 6; // 6-digit verification code for desktop
 
-// Initialize Resend component
-// Note: testMode defaults to true, set to false in production via RESEND_TEST_MODE env var
-export const resend = new Resend(components.resend, {});
+// Initialize Resend component with test mode disabled for production
+export const resend = new Resend(components.resend, {
+  testMode: false,
+});
 
 // Generate a cryptographically random token
 function generateToken(): string {
