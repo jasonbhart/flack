@@ -201,9 +201,13 @@
   );
   const messagesQuery = useQuery(
     api.messages.list,
-    () => (activeChannelId && authStore.sessionToken
-      ? { channelId: activeChannelId, sessionToken: authStore.sessionToken }
-      : "skip")
+    () => {
+      const args = activeChannelId && authStore.sessionToken
+        ? { channelId: activeChannelId, sessionToken: authStore.sessionToken }
+        : "skip";
+      console.log("[DEBUG] messagesQuery args:", args === "skip" ? "skip" : { channelId: activeChannelId, hasToken: !!authStore.sessionToken });
+      return args;
+    }
   );
 
   // Presence queries
@@ -223,6 +227,12 @@
   // Auto-select channel when loaded (validate saved or fall back to first)
   $effect(() => {
     const channels = channelsQuery.data;
+    console.log("[DEBUG] Auto-select effect:", {
+      channels: channels?.length,
+      activeChannelId,
+      channelRestored,
+      sessionToken: !!authStore.sessionToken
+    });
     if (!channels || channels.length === 0) return;
 
     // Check if saved channel exists in list
@@ -234,6 +244,7 @@
       unreadCounts.markAsRead(activeChannelId!);
     } else if (!channelRestored) {
       // No valid saved channel - fall back to first
+      console.log("[DEBUG] Setting activeChannelId to first channel:", channels[0]._id);
       activeChannelId = channels[0]._id;
       channelRestored = true;
       unreadCounts.markAsRead(channels[0]._id);
@@ -710,10 +721,16 @@
               context="loading messages"
             />
           </div>
-        {:else if messagesQuery.isLoading && mergedMessages.length === 0}
+        {:else if activeChannelId && messagesQuery.isLoading && mergedMessages.length === 0}
+          <!-- Only show loading if we have a channel selected and query is actually running -->
           <div class="flex-1 flex flex-col items-center justify-center gap-3" aria-busy="true">
             <div class="w-8 h-8 border-3 border-[var(--text-tertiary)] border-t-volt rounded-full animate-spin"></div>
             <span class="text-sm text-[var(--text-secondary)]">Loading messages...</span>
+          </div>
+        {:else if !activeChannelId}
+          <!-- No channel selected yet -->
+          <div class="flex-1 flex items-center justify-center">
+            <span class="text-[var(--text-secondary)]">Select a channel to start chatting</span>
           </div>
         {:else}
           <MessageList messages={mergedMessages} onRetry={handleRetry} channelName={activeChannelName} />
