@@ -132,7 +132,7 @@
   <div class="max-w-md w-full p-8">
     <div class="text-center mb-8">
       <h1 class="text-3xl font-bold text-volt mb-2">Flack</h1>
-      <p class="text-[var(--text-secondary)]">Sign in to continue</p>
+      <p class="text-[var(--text-secondary)]">Instant team communication</p>
     </div>
 
     {#if status === "sent" || status === "verifying"}

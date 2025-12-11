@@ -48,6 +48,15 @@
     }
   });
 
+  // Redirect to login if not authenticated
+  $effect(() => {
+    // Wait for session query to resolve (not undefined = loading)
+    // null = no session, object = valid session
+    if (sessionQuery.data === null && browser) {
+      goto("/auth/login");
+    }
+  });
+
   // Handle logout
   async function handleLogout() {
     // Stop heartbeat first to prevent new presence updates
