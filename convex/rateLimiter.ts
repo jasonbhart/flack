@@ -25,7 +25,7 @@ export type RateLimitResult = {
 
 /**
  * Check rate limit for a given key and limit configuration.
- * Uses sliding window approach with fixed windows for simplicity.
+ * Uses fixed window approach (counters reset at window boundary).
  *
  * @param ctx - Mutation context
  * @param key - Rate limit key (e.g., "email:user@example.com" or "ip:192.168.1.1")
