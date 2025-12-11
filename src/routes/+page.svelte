@@ -64,6 +64,16 @@
     }
   });
 
+  // Handle server rejecting the token (session expired/revoked)
+  $effect(() => {
+    // Token exists locally but server says it's invalid
+    if (authStore.sessionToken && sessionQuery.data === null && browser) {
+      // Clear local token and redirect
+      authStore.clearSession();
+      // Note: the effect above will trigger redirect once token becomes null
+    }
+  });
+
   // Handle pending invite redemption after login
   $effect(() => {
     if (!browser || !sessionQuery.data || !authStore.sessionToken) return;
