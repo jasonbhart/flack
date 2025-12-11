@@ -11,7 +11,7 @@
   class="sr-only"
 >
   {#if !isPersistenceEnabled && !dismissed}
-    Limited offline support. Your messages will still send, but unsent drafts won't survive a page refresh.
+    Offline mode unavailable. Don't close or refresh while messages are sending.
   {/if}
 </div>
 
@@ -33,7 +33,7 @@
       />
     </svg>
     <span>
-      <strong>Limited offline support:</strong> Messages will send normally, but unsent drafts won't survive a page refresh. Try a regular browser window for full offline support.
+      <strong>Offline mode unavailable.</strong> Don't close or refresh while messages are sending, or they'll be lost.
     </span>
     <button
       onclick={() => dismissed = true}
