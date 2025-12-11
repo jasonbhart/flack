@@ -167,63 +167,68 @@
           </p>
         </div>
 
-        <div class="border-t border-[var(--border-default)] pt-6">
-          <p class="text-sm text-[var(--text-secondary)] text-center mb-4">
-            Using the desktop app? Enter the 6-digit code from your email:
-          </p>
-          <form onsubmit={handleCodeSubmit} class="space-y-4">
-            <label for="code" class="sr-only">6-digit verification code</label>
-            <input
-              id="code"
-              type="text"
-              bind:value={code}
-              placeholder="000000"
-              maxlength="6"
-              inputmode="numeric"
-              pattern="[0-9]*"
-              disabled={status === "verifying"}
-              aria-required="true"
-              aria-invalid={errorMessage ? "true" : undefined}
-              aria-describedby={errorMessage ? "code-error" : undefined}
-              class="w-full px-4 py-3 text-center text-2xl font-mono tracking-widest rounded-lg border border-[var(--border-default)] bg-[var(--bg-secondary)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-volt focus:border-transparent disabled:opacity-50"
-            />
-
-            {#if errorMessage}
-              <p id="code-error" role="alert" class="text-red-500 text-sm text-center">{errorMessage}</p>
-            {/if}
-
-            <button
-              type="submit"
-              disabled={status === "verifying" || code.length !== 6}
-              class="w-full py-3 px-4 bg-volt text-white font-medium rounded-lg hover:bg-volt/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {#if status === "verifying"}
-                <svg
-                  class="w-5 h-5 animate-spin"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    class="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    stroke-width="4"
-                  ></circle>
-                  <path
-                    class="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                  ></path>
-                </svg>
-                Verifying...
-              {:else}
-                Verify Code
-              {/if}
-            </button>
-          </form>
+        <!-- Divider with "or" -->
+        <div class="relative py-4">
+          <div class="absolute inset-0 flex items-center">
+            <div class="w-full border-t border-[var(--border-default)]"></div>
+          </div>
+          <div class="relative flex justify-center">
+            <span class="px-3 text-sm text-[var(--text-tertiary)] bg-[var(--bg-primary)]">or enter code</span>
+          </div>
         </div>
+
+        <form onsubmit={handleCodeSubmit} class="space-y-4">
+          <label for="code" class="sr-only">6-digit verification code</label>
+          <input
+            id="code"
+            type="text"
+            bind:value={code}
+            placeholder="000000"
+            maxlength="6"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            disabled={status === "verifying"}
+            aria-required="true"
+            aria-invalid={errorMessage ? "true" : undefined}
+            aria-describedby={errorMessage ? "code-error" : undefined}
+            class="w-full px-4 py-3 text-center text-2xl font-mono tracking-widest rounded-lg border border-[var(--border-default)] bg-[var(--bg-secondary)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-volt focus:border-transparent disabled:opacity-50"
+          />
+
+          {#if errorMessage}
+            <p id="code-error" role="alert" class="text-red-500 text-sm text-center">{errorMessage}</p>
+          {/if}
+
+          <button
+            type="submit"
+            disabled={status === "verifying" || code.length !== 6}
+            class="w-full py-3 px-4 bg-volt text-white font-medium rounded-lg hover:bg-volt/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {#if status === "verifying"}
+              <svg
+                class="w-5 h-5 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                ></path>
+              </svg>
+              Verifying...
+            {:else}
+              Verify Code
+            {/if}
+          </button>
+        </form>
 
         <button onclick={resetForm} class="w-full text-volt hover:underline text-sm">
           Use a different email
