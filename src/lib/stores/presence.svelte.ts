@@ -3,9 +3,8 @@ import type { Id } from "../../../convex/_generated/dataModel";
 type HeartbeatMutationFn = (args: {
   channelId: Id<"channels">;
   type: "online" | "typing";
-  userName?: string;
   sessionId: string;
-  sessionToken?: string;
+  sessionToken: string;
 }) => Promise<unknown>;
 
 type SessionTokenGetter = () => string | null;
@@ -68,7 +67,6 @@ class PresenceManager {
       await this.heartbeatMutation({
         channelId: this.currentChannelId,
         type: this.isTyping ? "typing" : "online",
-        userName: this.userName,
         sessionId: this.sessionId,
         sessionToken,
       });
