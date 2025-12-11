@@ -180,9 +180,9 @@ export const sendMagicLink = mutation({
           <a href="${magicLink}" style="display: inline-block; background: #3B82F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 16px 0;">
             Sign in to Flack
           </a>
-          <div style="margin: 24px 0; padding: 16px; background: #f5f5f5; border-radius: 8px;">
+          <div style="margin: 24px 0; padding: 16px; background: #f5f5f5; border-radius: 8px; text-align: center;">
             <p style="color: #666; font-size: 14px; margin: 0 0 8px 0;">
-              <strong>Using the desktop app?</strong> Enter this code:
+              Or enter this code:
             </p>
             <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #3B82F6; margin: 0; font-family: monospace;">
               ${code}
