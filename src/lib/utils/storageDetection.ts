@@ -6,7 +6,8 @@
 import { get, set, del } from "idb-keyval";
 
 const TEST_KEY = "__storage_test__";
-const DETECTION_TIMEOUT_MS = 50;
+// 500ms timeout - IndexedDB can be slow on initial cold start
+const DETECTION_TIMEOUT_MS = 500;
 
 /**
  * Storage estimate from the StorageManager API
