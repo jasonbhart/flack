@@ -114,7 +114,7 @@
       }
 
       // Success - result.sessionToken and result.user are guaranteed to exist
-      authStore.setSession(result.sessionToken!, {
+      await authStore.setSession(result.sessionToken!, {
         id: result.user!.id,
         email: result.user!.email,
         name: result.user!.name,

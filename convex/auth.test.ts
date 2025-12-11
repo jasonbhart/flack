@@ -261,5 +261,102 @@ describe("auth", () => {
       });
       expect(token?.attempts).toBe(1);
     });
+
+    it("creates user, default channel, and membership on successful verification", async () => {
+      const t = convexTest(schema, modules);
+      const email = "newuser@test.com";
+      const normalizedEmail = email.toLowerCase().trim();
+      const code = "123456";
+
+      // Create a valid auth token
+      const codeHash = await hashForTest(code);
+      const tokenHash = await hashForTest("some-magic-link-token");
+      await t.run(async (ctx) => {
+        await ctx.db.insert("authTokens", {
+          email: normalizedEmail,
+          token: tokenHash,
+          code: codeHash,
+          expiresAt: Date.now() + 15 * 60 * 1000,
+          used: false,
+        });
+      });
+
+      // Verify the code
+      const result = await t.mutation(api.auth.verifyCode, {
+        email,
+        code,
+      });
+
+      // Should succeed
+      expect(result.success).toBe(true);
+      expect(result.sessionToken).toBeDefined();
+      expect(result.user).toBeDefined();
+      expect(result.user?.email).toBe(normalizedEmail);
+
+      // Verify user was created
+      const users = await t.run(async (ctx) => {
+        return await ctx.db.query("users").collect();
+      });
+      expect(users.length).toBe(1);
+      expect(users[0].email).toBe(normalizedEmail);
+
+      // Verify default channel was created
+      const channels = await t.run(async (ctx) => {
+        return await ctx.db.query("channels").collect();
+      });
+      expect(channels.length).toBe(1);
+      expect(channels[0].name).toBe("general");
+      expect(channels[0].isDefault).toBe(true);
+      expect(channels[0].creatorId).toBe(users[0]._id);
+
+      // Verify channel membership was created
+      const memberships = await t.run(async (ctx) => {
+        return await ctx.db.query("channelMembers").collect();
+      });
+      expect(memberships.length).toBe(1);
+      expect(memberships[0].channelId).toBe(channels[0]._id);
+      expect(memberships[0].userId).toBe(users[0]._id);
+      expect(memberships[0].role).toBe("owner");
+    });
+
+    it("returns channels for authenticated user after signup", async () => {
+      const t = convexTest(schema, modules);
+      const email = "channeltest@test.com";
+      const normalizedEmail = email.toLowerCase().trim();
+      const code = "654321";
+
+      // Create a valid auth token
+      const codeHash = await hashForTest(code);
+      const tokenHash = await hashForTest("another-magic-link-token");
+      await t.run(async (ctx) => {
+        await ctx.db.insert("authTokens", {
+          email: normalizedEmail,
+          token: tokenHash,
+          code: codeHash,
+          expiresAt: Date.now() + 15 * 60 * 1000,
+          used: false,
+        });
+      });
+
+      // Verify the code to create user and get session
+      const verifyResult = await t.mutation(api.auth.verifyCode, {
+        email,
+        code,
+      });
+
+      expect(verifyResult.success).toBe(true);
+      const sessionToken = verifyResult.sessionToken!;
+
+      // Now query channels with the session token
+      const channels = await t.query(api.channels.list, {
+        sessionToken,
+      });
+
+      // Should return the default general channel
+      expect(channels.length).toBe(1);
+      expect(channels[0].name).toBe("general");
+      expect(channels[0].role).toBe("owner");
+      expect(channels[0].creatorName).toBeDefined();
+    });
   });
 });

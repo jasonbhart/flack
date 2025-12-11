@@ -5,32 +5,20 @@ import { browser } from "$app/environment";
  *
  * Platform behavior:
  * - Tauri desktop: Uses plugin-store for encrypted file-based storage (persists)
- * - Web browser: Uses in-memory storage only (cleared on page refresh)
+ * - Web browser: Uses localStorage for persistence across refreshes
  *
- * ## Web Storage Security Trade-off
+ * ## Web Storage Security Note
  *
- * On web, tokens are stored ONLY in memory (not localStorage/sessionStorage).
- * This is a deliberate HIGH SECURITY / LOW CONVENIENCE trade-off:
+ * localStorage is vulnerable to XSS attacks - if an attacker can run JS on your
+ * page, they can steal the token. However, this is the standard approach for
+ * most web apps (including Slack, Discord, etc.) because:
  *
- * Pros:
- * - XSS attacks cannot steal persisted tokens (nothing to steal)
- * - Token exposure window limited to current session
- * - Closing browser tab = automatic logout
+ * 1. CSP headers mitigate XSS risk significantly
+ * 2. Session tokens expire (30 days) limiting exposure window
+ * 3. Users expect sessions to persist across page refreshes
  *
- * Cons:
- * - Users must re-authenticate on every page refresh
- * - Users must re-authenticate when opening new tabs
- * - Poor UX compared to typical web apps
- *
- * ## Alternatives (if persistence is needed on web)
- *
- * 1. localStorage: Accept XSS risk for better UX (most common)
- * 2. HTTP-only cookies: Requires server-side session management
- *    (different Convex auth flow, protects against XSS)
- * 3. sessionStorage: Persists during tab session but not across tabs
- *
- * Current choice prioritizes security for this demo app.
- * Production apps should evaluate based on threat model.
+ * For higher security requirements, consider HTTP-only cookies with
+ * server-side session management.
  */
 
 // Storage keys
@@ -40,10 +28,6 @@ const STORE_NAME = "flack-auth.json";
 
 // Check if running in Tauri
 const isTauri = browser && typeof (window as any).__TAURI__ !== "undefined";
-
-// In-memory storage for web (secure fallback)
-let memoryToken: string | null = null;
-let memoryExpiry: number | null = null;
 
 // Type for Tauri store interface (imported dynamically)
 interface TauriStoreInterface {
@@ -116,14 +100,23 @@ export async function getToken(): Promise<string | null> {
     }
   }
 
-  // Web: use memory storage
-  if (memoryExpiry && memoryExpiry < Date.now()) {
-    memoryToken = null;
-    memoryExpiry = null;
+  // Web: use localStorage
+  try {
+    const token = localStorage.getItem(TOKEN_KEY);
+    const expiryStr = localStorage.getItem(EXPIRY_KEY);
+    const expiry = expiryStr ? parseInt(expiryStr, 10) : null;
+
+    // Check if expired
+    if (expiry && expiry < Date.now()) {
+      await clearToken();
+      return null;
+    }
+
+    return token;
+  } catch (error) {
+    console.error("Failed to get token from localStorage:", error);
     return null;
   }
-
-  return memoryToken;
 }
 
 /**
@@ -142,14 +135,18 @@ export async function setToken(token: string, expiresAt: number): Promise<void> 
         return;
       } catch (error) {
         console.error("Failed to set token in Tauri store:", error);
-        // Fall through to memory storage
+        // Fall through to localStorage
       }
     }
   }
 
-  // Web: use memory storage
-  memoryToken = token;
-  memoryExpiry = expiresAt;
+  // Web: use localStorage
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(EXPIRY_KEY, expiresAt.toString());
+  } catch (error) {
+    console.error("Failed to set token in localStorage:", error);
+  }
 }
 
 /**
@@ -171,9 +168,13 @@ export async function clearToken(): Promise<void> {
     }
   }
 
-  // Always clear memory storage too
-  memoryToken = null;
-  memoryExpiry = null;
+  // Web: clear localStorage
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(EXPIRY_KEY);
+  } catch (error) {
+    console.error("Failed to clear token from localStorage:", error);
+  }
 }
 
 /**
@@ -193,7 +194,13 @@ export async function getExpiry(): Promise<number | null> {
     }
   }
 
-  return memoryExpiry;
+  // Web: get from localStorage
+  try {
+    const expiryStr = localStorage.getItem(EXPIRY_KEY);
+    return expiryStr ? parseInt(expiryStr, 10) : null;
+  } catch (error) {
+    return null;
+  }
 }
 
 /**
