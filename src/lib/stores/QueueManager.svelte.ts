@@ -166,9 +166,21 @@ class MessageQueue {
     }
 
     try {
+      // Convert Svelte 5 $state proxy to plain objects for IndexedDB serialization
+      // $state creates Proxy objects which can't be cloned by structured clone algorithm
+      const plainEntries = this.queue.map((entry) => ({
+        clientMutationId: entry.clientMutationId,
+        channelId: entry.channelId,
+        body: entry.body,
+        authorName: entry.authorName,
+        status: entry.status,
+        retryCount: entry.retryCount,
+        createdAt: entry.createdAt,
+        error: entry.error,
+      }));
       const storage: QueueStorage = {
         version: 1,
-        entries: this.queue,
+        entries: plainEntries,
       };
       await set(QUEUE_KEY, storage);
     } catch (error) {
