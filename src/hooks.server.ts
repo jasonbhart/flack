@@ -10,15 +10,16 @@ export const handle: Handle = async ({ event, resolve }) => {
   // Content Security Policy
   // - default-src 'self': Only allow resources from same origin by default
   // - script-src 'self' 'unsafe-inline': Allow scripts from same origin + inline (needed for SvelteKit hydration)
+  //   Also allow Cloudflare's analytics beacon (static.cloudflareinsights.com)
   // - style-src 'self' 'unsafe-inline': Allow styles from same origin + inline (needed for Tailwind)
-  // - connect-src: Allow WebSocket connections to Convex
+  // - connect-src: Allow WebSocket connections to Convex and Cloudflare analytics
   // - img-src: Allow images from same origin, data URIs, and blobs
   // - font-src 'self': Only allow fonts from same origin
   const csp = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com",
     "style-src 'self' 'unsafe-inline'",
-    "connect-src 'self' wss://*.convex.cloud https://*.convex.cloud",
+    "connect-src 'self' wss://*.convex.cloud https://*.convex.cloud https://cloudflareinsights.com",
     "img-src 'self' data: blob:",
     "font-src 'self'",
     "frame-ancestors 'none'",
