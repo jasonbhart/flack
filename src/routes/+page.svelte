@@ -33,9 +33,13 @@
   const client = useConvexClient();
 
   // Check session on load
+  // Skip the query while authStore.sessionToken is undefined (still loading from storage)
+  // This prevents the race condition where we query with null token before storage check completes
   const sessionQuery = useQuery(
     api.auth.getSession,
-    () => ({ sessionToken: authStore.sessionToken ?? undefined })
+    () => authStore.sessionToken === undefined
+      ? "skip"
+      : { sessionToken: authStore.sessionToken ?? undefined }
   );
 
   // Update auth store when session query resolves
@@ -465,7 +469,8 @@
 <svelte:window onkeydown={handleGlobalKeydown} />
 
 <!-- Auth loading state - show minimal UI while checking auth -->
-{#if sessionQuery.data === undefined}
+<!-- Show loading if: token still loading from storage OR session query still in flight -->
+{#if authStore.sessionToken === undefined || sessionQuery.data === undefined}
   <div class="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
     <div class="flex flex-col items-center gap-3">
       <div class="w-8 h-8 border-3 border-[var(--text-tertiary)] border-t-volt rounded-full animate-spin"></div>

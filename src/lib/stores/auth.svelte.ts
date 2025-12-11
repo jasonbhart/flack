@@ -12,7 +12,9 @@ interface User {
 }
 
 class AuthStore {
-  sessionToken = $state<string | null>(null);
+  // Start as undefined (loading) - NOT null (logged out)
+  // This prevents race condition where page redirects before storage check completes
+  sessionToken = $state<string | null | undefined>(undefined);
   user = $state<User | null>(null);
   isLoading = $state(true);
   private initialized = false;
@@ -21,12 +23,20 @@ class AuthStore {
     // Initialize asynchronously from secure storage
     if (browser) {
       this.initFromStorage();
+    } else {
+      // SSR: mark as not loading, no token
+      this.sessionToken = null;
     }
   }
 
   /**
    * Initialize session from secure storage.
    * Called on app start to restore session.
+   *
+   * IMPORTANT: sessionToken starts as `undefined` (loading state).
+   * This method sets it to either a valid token or `null` (logged out).
+   * This prevents the race condition where the page redirects to login
+   * before we've had a chance to check storage (especially on Tauri/Desktop).
    */
   async initFromStorage() {
     if (!browser || this.initialized) return;
@@ -38,14 +48,20 @@ class AuthStore {
         // Check if expired
         const isExpired = await secureStorage.isExpired();
         if (isExpired) {
-          // Token expired - clear it
-          await this.clearSession();
+          // Token expired - clear it and mark as logged out
+          await secureStorage.clearToken();
+          this.sessionToken = null;
         } else {
           this.sessionToken = token;
         }
+      } else {
+        // No token found - explicitly mark as logged out
+        this.sessionToken = null;
       }
     } catch (error) {
       console.error("Failed to load session from secure storage:", error);
+      // Fail safe - mark as logged out
+      this.sessionToken = null;
     }
   }
 
