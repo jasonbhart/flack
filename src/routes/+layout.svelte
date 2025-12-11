@@ -2,12 +2,12 @@
   import "./layout.css";
   import favicon from "$lib/assets/favicon.svg";
   import { setupConvex } from "convex-svelte";
+  import { PUBLIC_CONVEX_URL } from "$env/static/public";
 
   let { children } = $props();
 
   // Initialize Convex client
-  // URL is public (not a secret) - hardcoded for static build compatibility
-  setupConvex("https://stoic-otter-636.convex.cloud");
+  setupConvex(PUBLIC_CONVEX_URL);
 </script>
 
 <svelte:head>

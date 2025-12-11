@@ -2,3 +2,9 @@ name = "flack"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".svelte-kit/cloudflare"
+
+[build.environment]
+PUBLIC_CONVEX_URL = "https://stoic-otter-636.convex.cloud"
+
+[vars]
+PUBLIC_CONVEX_URL = "https://stoic-otter-636.convex.cloud"
