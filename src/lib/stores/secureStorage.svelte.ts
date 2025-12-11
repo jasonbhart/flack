@@ -45,20 +45,28 @@ const isTauri = browser && typeof (window as any).__TAURI__ !== "undefined";
 let memoryToken: string | null = null;
 let memoryExpiry: number | null = null;
 
+// Type for Tauri store interface (imported dynamically)
+interface TauriStoreInterface {
+  get(key: string): Promise<unknown>;
+  set(key: string, value: unknown): Promise<void>;
+  delete(key: string): Promise<boolean>;
+  save(): Promise<void>;
+}
+
 // Tauri store instance (lazy loaded)
-let tauriStore: any = null;
+let tauriStore: TauriStoreInterface | null = null;
 
 /**
  * Initialize Tauri store if available
  */
-async function getTauriStore() {
+async function getTauriStore(): Promise<TauriStoreInterface | null> {
   if (!isTauri) return null;
 
   if (tauriStore) return tauriStore;
 
   try {
     const { Store } = await import("@tauri-apps/plugin-store");
-    tauriStore = await Store.load(STORE_NAME);
+    tauriStore = await Store.load(STORE_NAME) as unknown as TauriStoreInterface;
     return tauriStore;
   } catch (error) {
     console.warn("Failed to load Tauri store, falling back to memory storage:", error);
@@ -91,8 +99,8 @@ export async function getToken(): Promise<string | null> {
     const store = await getTauriStore();
     if (store) {
       try {
-        const token = await store.get<string>(TOKEN_KEY);
-        const expiry = await store.get<number>(EXPIRY_KEY);
+        const token = await store.get(TOKEN_KEY) as string | undefined;
+        const expiry = await store.get(EXPIRY_KEY) as number | undefined;
 
         // Check if expired
         if (expiry && expiry < Date.now()) {
@@ -178,7 +186,7 @@ export async function getExpiry(): Promise<number | null> {
     const store = await getTauriStore();
     if (store) {
       try {
-        return await store.get<number>(EXPIRY_KEY) ?? null;
+        return (await store.get(EXPIRY_KEY) as number | undefined) ?? null;
       } catch (error) {
         return null;
       }

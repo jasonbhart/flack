@@ -1,4 +1,4 @@
-import type { Id } from "../../../convex/_generated/dataModel";
+import type { Id, Doc } from "../../../convex/_generated/dataModel";
 
 /**
  * Message status state machine for optimistic UI.
@@ -34,20 +34,11 @@ export interface PendingMessage {
   error?: string;
 }
 
-export interface ServerMessage {
-  _id: Id<"messages">;
-  _creationTime: number;
-  channelId: Id<"channels">;
-  userId: Id<"users">;
-  authorName: string;
-  body: string;
-  clientMutationId?: string;
-  parentId?: Id<"messages">;
-  reactions?: Array<{
-    emoji: string;
-    users: Id<"users">[];
-  }>;
-}
+/**
+ * Server message type derived from Convex schema.
+ * Using Doc<"messages"> ensures this stays in sync with schema.ts
+ */
+export type ServerMessage = Doc<"messages">;
 
 export interface MergedMessage {
   _id?: Id<"messages">;

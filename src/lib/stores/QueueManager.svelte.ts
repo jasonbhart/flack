@@ -190,13 +190,6 @@ class MessageQueue {
   }
 
   /**
-   * @deprecated Use persistWithLock() for race-safe persistence
-   */
-  private async persist(): Promise<void> {
-    return this.persistWithLock();
-  }
-
-  /**
    * Debounced persist for status updates.
    * Batches multiple status changes within DEBOUNCE_MS window.
    * Cancels pending debounce if immediate persist is called.
@@ -327,7 +320,7 @@ class MessageQueue {
     this.queue = this.queue.filter(
       (e) => e.clientMutationId !== clientMutationId
     );
-    await this.persist();
+    await this.persistWithLock();
   }
 
   /**
@@ -481,7 +474,7 @@ class MessageQueue {
         ? { ...e, retryCount: 0, status: "pending" as const, error: undefined }
         : e
     );
-    await this.persist();
+    await this.persistWithLock();
 
     // Process immediately
     await this.process({ ...entry, retryCount: 0, status: "pending" });
