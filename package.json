@@ -17,6 +17,7 @@
 		"tauri:build": "tauri build"
 	},
 	"devDependencies": {
+		"@edge-runtime/vm": "^5.0.0",
 		"@sveltejs/adapter-cloudflare": "^7.2.4",
 		"@sveltejs/kit": "^2.48.5",
 		"@sveltejs/vite-plugin-svelte": "^6.2.1",
@@ -25,6 +26,7 @@
 		"@tauri-apps/cli": "^2",
 		"@tauri-apps/plugin-store": "^2",
 		"@types/node": "^24.10.2",
+		"convex-test": "^0.0.41",
 		"svelte": "^5.43.8",
 		"svelte-check": "^4.3.4",
 		"tailwindcss": "^4.1.17",

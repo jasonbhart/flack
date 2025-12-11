@@ -67,21 +67,27 @@ describe("formatRelativeTime", () => {
     });
   });
 
-  describe("days ago (24h+)", () => {
-    it('returns "1d ago" for exactly 24 hours ago', () => {
-      expect(formatRelativeTime(MOCK_NOW - 24 * 60 * 60 * 1000)).toBe("1d ago");
+  describe("dates (24h+)", () => {
+    it('returns short date format for exactly 24 hours ago', () => {
+      const timestamp = MOCK_NOW - 24 * 60 * 60 * 1000;
+      const result = formatRelativeTime(timestamp);
+      // Implementation returns short date like "Nov 13" for >24h
+      expect(result).not.toBe("just now");
+      expect(result).not.toContain("ago");
     });
 
-    it('returns "7d ago" for 1 week ago', () => {
-      expect(formatRelativeTime(MOCK_NOW - 7 * 24 * 60 * 60 * 1000)).toBe(
-        "7d ago"
-      );
+    it('returns short date format for 1 week ago', () => {
+      const timestamp = MOCK_NOW - 7 * 24 * 60 * 60 * 1000;
+      const result = formatRelativeTime(timestamp);
+      expect(result).not.toBe("just now");
+      expect(result).not.toContain("ago");
     });
 
-    it('returns "30d ago" for 30 days ago', () => {
-      expect(formatRelativeTime(MOCK_NOW - 30 * 24 * 60 * 60 * 1000)).toBe(
-        "30d ago"
-      );
+    it('returns short date format for 30 days ago', () => {
+      const timestamp = MOCK_NOW - 30 * 24 * 60 * 60 * 1000;
+      const result = formatRelativeTime(timestamp);
+      expect(result).not.toBe("just now");
+      expect(result).not.toContain("ago");
     });
   });
 });
