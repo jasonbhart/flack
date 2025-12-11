@@ -263,12 +263,29 @@ const MAX_CODE_ATTEMPTS = 5;
 /**
  * Verify a 6-digit code (for desktop app where magic links don't work)
  * Rate limited to prevent brute-force lockout attacks.
+ *
+ * IMPORTANT: Returns a result object instead of throwing errors for failures.
+ * This ensures rate limit increments and attempt counters persist even on
+ * failed verification (Convex rolls back all writes when mutations throw).
  */
 export const verifyCode = mutation({
   args: {
     email: v.string(),
     code: v.string(),
   },
+  returns: v.object({
+    success: v.boolean(),
+    error: v.optional(v.string()),
+    retryAfterSeconds: v.optional(v.number()),
+    sessionToken: v.optional(v.string()),
+    user: v.optional(
+      v.object({
+        id: v.id("users"),
+        email: v.string(),
+        name: v.string(),
+      })
+    ),
+  }),
   handler: async (ctx, args) => {
     const email = normalizeEmail(args.email);
     const code = args.code.replace(/\s/g, ""); // Remove any spaces
@@ -281,14 +298,18 @@ export const verifyCode = mutation({
       RATE_LIMITS.codeVerification.perMinutePerEmail
     );
     if (!rateLimitResult.allowed) {
-      throw new Error(
-        `Too many attempts. Please wait ${rateLimitResult.retryAfterSeconds} seconds.`
-      );
+      // Return error (don't throw) - rate limit increment already persisted
+      return {
+        success: false,
+        error: "Too many attempts. Please try again later.",
+        retryAfterSeconds: rateLimitResult.retryAfterSeconds,
+      };
     }
 
     // Validate code format
     if (!/^\d{6}$/.test(code)) {
-      throw new Error("Invalid code format");
+      // Format validation doesn't need to persist state, but return for consistency
+      return { success: false, error: "Invalid code format" };
     }
 
     // Hash the incoming code to compare with stored hash
@@ -312,7 +333,11 @@ export const verifyCode = mutation({
     );
 
     if (validTokens.length === 0 && authTokens.length > 0) {
-      throw new Error("Too many failed attempts. Please request a new code.");
+      // All tokens exhausted - return error (state already persisted)
+      return {
+        success: false,
+        error: "Too many failed attempts. Please request a new code.",
+      };
     }
 
     // Find matching code among valid tokens
@@ -332,7 +357,8 @@ export const verifyCode = mutation({
           attempts: (newestToken.attempts ?? 0) + 1,
         });
       }
-      throw new Error("Invalid or expired code");
+      // RETURN instead of throw - ensures attempt increment persists
+      return { success: false, error: "Invalid or expired code" };
     }
 
     // Mark token as used
@@ -353,6 +379,7 @@ export const verifyCode = mutation({
     });
 
     return {
+      success: true,
       sessionToken,
       user: {
         id: user._id,

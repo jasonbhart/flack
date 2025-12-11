@@ -4,6 +4,15 @@ import { api } from "./_generated/api";
 import schema from "./schema";
 import { modules } from "./test.setup";
 
+// Helper to hash strings for testing (same algorithm as production)
+async function hashForTest(value: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(value);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 describe("auth", () => {
   describe("getSession", () => {
     it("returns null for invalid session token", async () => {
@@ -144,13 +153,12 @@ describe("auth", () => {
   });
 
   describe("verifyCode", () => {
-    it("enforces rate limits when limit is reached", async () => {
+    it("returns rate limit error when limit is reached", async () => {
       const t = convexTest(schema, modules);
       const email = "rate-limit@test.com";
       const normalizedEmail = email.toLowerCase().trim();
 
       // Pre-populate rate limit to simulate 5 previous attempts
-      // (In real usage, rate limits persist across failed mutations via internal mutation)
       const now = Date.now();
       const windowMs = 60 * 1000; // 1 minute
       const windowStart = Math.floor(now / windowMs) * windowMs;
@@ -164,26 +172,94 @@ describe("auth", () => {
         });
       });
 
-      // Next attempt should be rate limited immediately
-      await expect(
-        t.mutation(api.auth.verifyCode, {
-          email,
-          code: "123456",
-        })
-      ).rejects.toThrow("Too many attempts");
+      // Next attempt should return rate limit error (not throw)
+      const result = await t.mutation(api.auth.verifyCode, {
+        email,
+        code: "123456",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Too many attempts");
+      expect(result.retryAfterSeconds).toBeDefined();
     });
 
-    it("rejects invalid code format before rate limiting", async () => {
+    it("returns error for invalid code format", async () => {
       const t = convexTest(schema, modules);
 
-      // Rate limit check runs first, then format validation
-      // But we still want to verify format validation works
-      await expect(
-        t.mutation(api.auth.verifyCode, {
-          email: "format-test@test.com",
-          code: "abc", // Invalid format
-        })
-      ).rejects.toThrow("Invalid code format");
+      const result = await t.mutation(api.auth.verifyCode, {
+        email: "format-test@test.com",
+        code: "abc", // Invalid format
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Invalid code format");
+    });
+
+    it("increments rate limit counter on failed verification", async () => {
+      const t = convexTest(schema, modules);
+      const email = "increment-test@test.com";
+      const normalizedEmail = email.toLowerCase().trim();
+
+      // Verify no rate limit records exist initially
+      const beforeRateLimits = await t.run(async (ctx) => {
+        return await ctx.db.query("rateLimits").collect();
+      });
+      const beforeCount = beforeRateLimits.filter(
+        (r) => r.key === `code_verify:${normalizedEmail}`
+      ).length;
+      expect(beforeCount).toBe(0);
+
+      // Make a failed verification attempt (no token exists for this email)
+      const result = await t.mutation(api.auth.verifyCode, {
+        email,
+        code: "123456",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Invalid or expired code");
+
+      // Verify rate limit was incremented (mutation didn't roll back)
+      const afterRateLimits = await t.run(async (ctx) => {
+        return await ctx.db.query("rateLimits").collect();
+      });
+      const rateLimitRecord = afterRateLimits.find(
+        (r) => r.key === `code_verify:${normalizedEmail}`
+      );
+      expect(rateLimitRecord).toBeDefined();
+      expect(rateLimitRecord?.count).toBe(1);
+    });
+
+    it("increments attempt counter on wrong code", async () => {
+      const t = convexTest(schema, modules);
+      const email = "attempts-test@test.com";
+      const normalizedEmail = email.toLowerCase().trim();
+
+      // Create a valid auth token for this email
+      const codeHash = await hashForTest("999999");
+      const tokenId = await t.run(async (ctx) => {
+        return await ctx.db.insert("authTokens", {
+          email: normalizedEmail,
+          token: "some-token-hash",
+          code: codeHash,
+          expiresAt: Date.now() + 15 * 60 * 1000, // 15 minutes
+          used: false,
+        });
+      });
+
+      // Try with wrong code
+      const result = await t.mutation(api.auth.verifyCode, {
+        email,
+        code: "123456", // Wrong code (correct is 999999)
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Invalid or expired code");
+
+      // Verify attempts counter was incremented
+      const token = await t.run(async (ctx) => {
+        return await ctx.db.get(tokenId);
+      });
+      expect(token?.attempts).toBe(1);
     });
   });
 });

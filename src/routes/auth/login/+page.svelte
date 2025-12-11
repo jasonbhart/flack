@@ -106,14 +106,23 @@
         code: code.trim(),
       });
 
-      authStore.setSession(result.sessionToken, {
-        id: result.user.id,
-        email: result.user.email,
-        name: result.user.name,
+      if (!result.success) {
+        // Mutation succeeded but verification failed - state changes persisted
+        status = "sent"; // Go back to code entry state
+        errorMessage = result.error ?? "Verification failed";
+        return;
+      }
+
+      // Success - result.sessionToken and result.user are guaranteed to exist
+      authStore.setSession(result.sessionToken!, {
+        id: result.user!.id,
+        email: result.user!.email,
+        name: result.user!.name,
       });
 
       goto("/");
     } catch (error) {
+      // Network/unexpected errors
       status = "sent"; // Go back to code entry state
       errorMessage =
         error instanceof Error ? error.message : "Verification failed";
