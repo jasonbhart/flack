@@ -2,6 +2,7 @@
   import { browser } from "$app/environment";
   import { goto } from "$app/navigation";
   import { useConvexClient, useQuery } from "convex-svelte";
+  import { untrack } from "svelte";
   import { api } from "../../convex/_generated/api";
   import type { Id, Doc } from "../../convex/_generated/dataModel";
   import type { MergedMessage } from "$lib/types/messages";
@@ -201,13 +202,9 @@
   );
   const messagesQuery = useQuery(
     api.messages.list,
-    () => {
-      const args = activeChannelId && authStore.sessionToken
-        ? { channelId: activeChannelId, sessionToken: authStore.sessionToken }
-        : "skip";
-      console.log("[DEBUG] messagesQuery args:", args === "skip" ? "skip" : { channelId: activeChannelId, hasToken: !!authStore.sessionToken });
-      return args;
-    }
+    () => (activeChannelId && authStore.sessionToken
+      ? { channelId: activeChannelId, sessionToken: authStore.sessionToken }
+      : "skip")
   );
 
   // Presence queries
@@ -225,26 +222,24 @@
   );
 
   // Auto-select channel when loaded (validate saved or fall back to first)
+  // Using untrack to prevent infinite loops when reading state we also write to
   $effect(() => {
     const channels = channelsQuery.data;
-    console.log("[DEBUG] Auto-select effect:", {
-      channels: channels?.length,
-      activeChannelId,
-      channelRestored,
-      sessionToken: !!authStore.sessionToken
-    });
     if (!channels || channels.length === 0) return;
 
-    // Check if saved channel exists in list
-    const savedChannelExists = activeChannelId && channels.some(c => c._id === activeChannelId);
+    // Read current values without tracking to avoid infinite loop
+    const currentActiveChannelId = untrack(() => activeChannelId);
+    const currentChannelRestored = untrack(() => channelRestored);
 
-    if (savedChannelExists) {
+    // Check if saved channel exists in list
+    const savedChannelExists = currentActiveChannelId && channels.some(c => c._id === currentActiveChannelId);
+
+    if (savedChannelExists && !currentChannelRestored) {
       // Saved channel is valid - mark restored and as read
       channelRestored = true;
-      unreadCounts.markAsRead(activeChannelId!);
-    } else if (!channelRestored) {
+      unreadCounts.markAsRead(currentActiveChannelId!);
+    } else if (!savedChannelExists && !currentChannelRestored) {
       // No valid saved channel - fall back to first
-      console.log("[DEBUG] Setting activeChannelId to first channel:", channels[0]._id);
       activeChannelId = channels[0]._id;
       channelRestored = true;
       unreadCounts.markAsRead(channels[0]._id);
