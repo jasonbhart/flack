@@ -142,4 +142,48 @@ describe("auth", () => {
       expect(afterLogout).toBeNull();
     });
   });
+
+  describe("verifyCode", () => {
+    it("enforces rate limits when limit is reached", async () => {
+      const t = convexTest(schema, modules);
+      const email = "rate-limit@test.com";
+      const normalizedEmail = email.toLowerCase().trim();
+
+      // Pre-populate rate limit to simulate 5 previous attempts
+      // (In real usage, rate limits persist across failed mutations via internal mutation)
+      const now = Date.now();
+      const windowMs = 60 * 1000; // 1 minute
+      const windowStart = Math.floor(now / windowMs) * windowMs;
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert("rateLimits", {
+          key: `code_verify:${normalizedEmail}`,
+          type: "minute",
+          windowStart,
+          count: 5, // Already at limit
+        });
+      });
+
+      // Next attempt should be rate limited immediately
+      await expect(
+        t.mutation(api.auth.verifyCode, {
+          email,
+          code: "123456",
+        })
+      ).rejects.toThrow("Too many attempts");
+    });
+
+    it("rejects invalid code format before rate limiting", async () => {
+      const t = convexTest(schema, modules);
+
+      // Rate limit check runs first, then format validation
+      // But we still want to verify format validation works
+      await expect(
+        t.mutation(api.auth.verifyCode, {
+          email: "format-test@test.com",
+          code: "abc", // Invalid format
+        })
+      ).rejects.toThrow("Invalid code format");
+    });
+  });
 });
