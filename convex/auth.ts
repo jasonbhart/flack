@@ -46,12 +46,14 @@ const EMAIL_RATE_LIMIT_MS = 60 * 1000; // 1 minute between requests
  * Note: Convex doesn't enforce unique constraints on non-ID fields.
  * We rely on transaction retries for correctness. For strict uniqueness,
  * consider using email as a document ID in a separate lookup table.
+ *
+ * For new users, also creates a default #general channel with the user as owner.
  */
 async function getOrCreateUser(
   ctx: { db: import("./_generated/server").MutationCtx["db"] },
   email: string,
   options: { upgradeTemp?: boolean } = {}
-): Promise<import("./_generated/dataModel").Doc<"users">> {
+): Promise<{ user: import("./_generated/dataModel").Doc<"users">; isNewUser: boolean }> {
   // Try to find existing user
   let user = await ctx.db
     .query("users")
@@ -64,7 +66,7 @@ async function getOrCreateUser(
       await ctx.db.patch(user._id, { isTemp: false });
       user = await ctx.db.get(user._id);
     }
-    return user!;
+    return { user: user!, isNewUser: false };
   }
 
   // User doesn't exist - create new user
@@ -76,7 +78,23 @@ async function getOrCreateUser(
   });
 
   const newUser = await ctx.db.get(userId);
-  return newUser!;
+
+  // Create default #general channel for new user
+  const channelId = await ctx.db.insert("channels", {
+    name: "general",
+    creatorId: userId,
+    isDefault: true,
+  });
+
+  // Add user as owner of their default channel
+  await ctx.db.insert("channelMembers", {
+    channelId,
+    userId,
+    role: "owner",
+    joinedAt: Date.now(),
+  });
+
+  return { user: newUser!, isNewUser: true };
 }
 
 /**
@@ -97,16 +115,16 @@ export const sendMagicLink = mutation({
     }
 
     // Check rate limits before proceeding
-    const rateLimitChecks = [
-      { key: `email:${email}`, type: "minute" as const, limit: RATE_LIMITS.magicLink.perMinutePerEmail },
-      { key: `email:${email}`, type: "hour" as const, limit: RATE_LIMITS.magicLink.perHourPerEmail },
+    const rateLimitChecks: Array<{ key: string; type: "minute" | "hour"; limit: number }> = [
+      { key: `email:${email}`, type: "minute", limit: RATE_LIMITS.magicLink.perMinutePerEmail },
+      { key: `email:${email}`, type: "hour", limit: RATE_LIMITS.magicLink.perHourPerEmail },
     ];
 
     // Add IP rate limit if provided
     if (args.clientIp) {
       rateLimitChecks.push({
         key: `ip:${args.clientIp}`,
-        type: "minute" as const,
+        type: "minute",
         limit: RATE_LIMITS.magicLink.perMinutePerIp,
       });
     }
@@ -211,8 +229,8 @@ export const verifyMagicLink = mutation({
     // Mark token as used
     await ctx.db.patch(authToken._id, { used: true });
 
-    // Get or create user (handles race conditions)
-    const user = await getOrCreateUser(ctx, authToken.email, { upgradeTemp: true });
+    // Get or create user (handles race conditions, creates default channel for new users)
+    const { user } = await getOrCreateUser(ctx, authToken.email, { upgradeTemp: true });
 
     // Create session with hashed token
     const sessionToken = generateToken();
@@ -220,7 +238,7 @@ export const verifyMagicLink = mutation({
     const sessionExpiresAt = Date.now() + SESSION_EXPIRY_MS;
 
     await ctx.db.insert("sessions", {
-      userId: user!._id,
+      userId: user._id,
       token: sessionTokenHash, // Store hash, not raw token
       expiresAt: sessionExpiresAt,
     });
@@ -229,9 +247,9 @@ export const verifyMagicLink = mutation({
     return {
       sessionToken,
       user: {
-        id: user!._id,
-        email: user!.email,
-        name: user!.name,
+        id: user._id,
+        email: user.email,
+        name: user.name,
       },
     };
   },
@@ -304,8 +322,8 @@ export const verifyCode = mutation({
     // Mark token as used
     await ctx.db.patch(authToken._id, { used: true });
 
-    // Get or create user (handles race conditions)
-    const user = await getOrCreateUser(ctx, authToken.email, { upgradeTemp: true });
+    // Get or create user (handles race conditions, creates default channel for new users)
+    const { user } = await getOrCreateUser(ctx, authToken.email, { upgradeTemp: true });
 
     // Create session with hashed token
     const sessionToken = generateToken();
@@ -313,7 +331,7 @@ export const verifyCode = mutation({
     const sessionExpiresAt = Date.now() + SESSION_EXPIRY_MS;
 
     await ctx.db.insert("sessions", {
-      userId: user!._id,
+      userId: user._id,
       token: sessionTokenHash,
       expiresAt: sessionExpiresAt,
     });
@@ -321,9 +339,9 @@ export const verifyCode = mutation({
     return {
       sessionToken,
       user: {
-        id: user!._id,
-        email: user!.email,
-        name: user!.name,
+        id: user._id,
+        email: user.email,
+        name: user.name,
       },
     };
   },

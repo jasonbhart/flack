@@ -9,10 +9,16 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as authHelpers from "../authHelpers.js";
+import type * as authMiddleware from "../authMiddleware.js";
+import type * as channelInvites from "../channelInvites.js";
+import type * as channelMembers from "../channelMembers.js";
 import type * as channels from "../channels.js";
 import type * as crons from "../crons.js";
 import type * as messages from "../messages.js";
+import type * as migrations from "../migrations.js";
 import type * as presence from "../presence.js";
+import type * as rateLimiter from "../rateLimiter.js";
 import type * as seed from "../seed.js";
 
 import type {
@@ -23,10 +29,16 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  authHelpers: typeof authHelpers;
+  authMiddleware: typeof authMiddleware;
+  channelInvites: typeof channelInvites;
+  channelMembers: typeof channelMembers;
   channels: typeof channels;
   crons: typeof crons;
   messages: typeof messages;
+  migrations: typeof migrations;
   presence: typeof presence;
+  rateLimiter: typeof rateLimiter;
   seed: typeof seed;
 }>;
 

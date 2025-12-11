@@ -18,4 +18,19 @@ crons.daily(
   internal.auth.cleanupAuth
 );
 
+// Clean up expired and max-used channel invites daily
+crons.daily(
+  "cleanup expired invites",
+  { hourUTC: 4, minuteUTC: 0 }, // 4 AM UTC
+  internal.channelInvites.cleanupInvites
+);
+
+// Clean up expired rate limit records hourly
+// Prevents unbounded growth of rateLimits table
+crons.hourly(
+  "cleanup rate limits",
+  { minuteUTC: 30 }, // Offset from other hourly jobs to spread load
+  internal.rateLimiter.cleanupRateLimits
+);
+
 export default crons;

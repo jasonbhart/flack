@@ -3,10 +3,9 @@ import {
   mutation,
   QueryCtx,
   MutationCtx,
-  FunctionReference,
 } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
-import { v, Validator } from "convex/values";
+import { v } from "convex/values";
 import { getAuthenticatedUser, hashToken } from "./authHelpers";
 
 /**
@@ -59,23 +58,18 @@ export type AuthenticatedMutationCtx = MutationCtx & {
  *   },
  * });
  */
-export function withAuthQuery<Args extends Record<string, unknown>, Returns>({
-  args,
-  handler,
-}: {
-  args: { [K in keyof Args]: Validator<Args[K], false, string> };
-  handler: (
-    ctx: AuthenticatedQueryCtx,
-    args: Args
-  ) => Promise<Returns>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function withAuthQuery(options: {
+  args: Record<string, any>;
+  handler: (ctx: AuthenticatedQueryCtx, args: any) => Promise<any>;
 }) {
   return query({
     args: {
-      ...args,
+      ...options.args,
       sessionToken: v.string(),
     },
     handler: async (ctx, allArgs) => {
-      const { sessionToken, ...restArgs } = allArgs as Args & { sessionToken: string };
+      const { sessionToken, ...restArgs } = allArgs;
 
       const user = await getAuthenticatedUser(ctx, sessionToken);
 
@@ -89,7 +83,7 @@ export function withAuthQuery<Args extends Record<string, unknown>, Returns>({
         sessionToken,
       };
 
-      return handler(authCtx, restArgs as Args);
+      return options.handler(authCtx, restArgs);
     },
   });
 }
@@ -107,23 +101,18 @@ export function withAuthQuery<Args extends Record<string, unknown>, Returns>({
  *   },
  * });
  */
-export function withAuthMutation<Args extends Record<string, unknown>, Returns>({
-  args,
-  handler,
-}: {
-  args: { [K in keyof Args]: Validator<Args[K], false, string> };
-  handler: (
-    ctx: AuthenticatedMutationCtx,
-    args: Args
-  ) => Promise<Returns>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function withAuthMutation(options: {
+  args: Record<string, any>;
+  handler: (ctx: AuthenticatedMutationCtx, args: any) => Promise<any>;
 }) {
   return mutation({
     args: {
-      ...args,
+      ...options.args,
       sessionToken: v.string(),
     },
     handler: async (ctx, allArgs) => {
-      const { sessionToken, ...restArgs } = allArgs as Args & { sessionToken: string };
+      const { sessionToken, ...restArgs } = allArgs;
 
       const user = await getAuthenticatedUser(ctx, sessionToken);
 
@@ -137,7 +126,7 @@ export function withAuthMutation<Args extends Record<string, unknown>, Returns>(
         sessionToken,
       };
 
-      return handler(authCtx, restArgs as Args);
+      return options.handler(authCtx, restArgs);
     },
   });
 }
@@ -146,23 +135,18 @@ export function withAuthMutation<Args extends Record<string, unknown>, Returns>(
  * Optional auth wrapper - allows unauthenticated access but provides user if available.
  * Useful for queries that show different data based on auth status.
  */
-export function withOptionalAuthQuery<Args extends Record<string, unknown>, Returns>({
-  args,
-  handler,
-}: {
-  args: { [K in keyof Args]: Validator<Args[K], false, string> };
-  handler: (
-    ctx: QueryCtx & { user: Doc<"users"> | null },
-    args: Args
-  ) => Promise<Returns>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function withOptionalAuthQuery(options: {
+  args: Record<string, any>;
+  handler: (ctx: QueryCtx & { user: Doc<"users"> | null }, args: any) => Promise<any>;
 }) {
   return query({
     args: {
-      ...args,
+      ...options.args,
       sessionToken: v.optional(v.string()),
     },
     handler: async (ctx, allArgs) => {
-      const { sessionToken, ...restArgs } = allArgs as Args & { sessionToken?: string };
+      const { sessionToken, ...restArgs } = allArgs;
 
       const user = sessionToken
         ? await getAuthenticatedUser(ctx, sessionToken)
@@ -173,7 +157,7 @@ export function withOptionalAuthQuery<Args extends Record<string, unknown>, Retu
         user,
       };
 
-      return handler(authCtx, restArgs as Args);
+      return options.handler(authCtx, restArgs);
     },
   });
 }

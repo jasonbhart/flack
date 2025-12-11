@@ -181,8 +181,52 @@ export const removeMember = withAuthMutation({
     const targetIsOwner = targetMembership.role === "owner";
     const targetIsAdmin = targetMembership.role === "admin";
 
+    // Special case: Owner leaving - check if they're the sole member
+    if (isSelf && targetIsOwner) {
+      const allMembers = await ctx.db
+        .query("channelMembers")
+        .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
+        .collect();
+
+      if (allMembers.length === 1) {
+        // Sole owner leaving - delete the channel and all related data
+        const channel = await ctx.db.get(args.channelId);
+        if (channel) {
+          // Delete all invites for this channel
+          const invites = await ctx.db
+            .query("channelInvites")
+            .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
+            .collect();
+          for (const invite of invites) {
+            await ctx.db.delete(invite._id);
+          }
+
+          // Delete all messages in this channel
+          const messages = await ctx.db
+            .query("messages")
+            .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
+            .collect();
+          for (const message of messages) {
+            await ctx.db.delete(message._id);
+          }
+
+          // Delete the channel itself
+          await ctx.db.delete(args.channelId);
+        }
+
+        // Delete the membership
+        await ctx.db.delete(targetMembership._id);
+        return { success: true, channelDeleted: true };
+      } else {
+        // Owner with other members must transfer ownership first
+        throw new Error(
+          "You must transfer ownership before leaving. Use the transferOwnership action, or remove all other members first."
+        );
+      }
+    }
+
     // Only allow:
-    // - Users removing themselves (except owners - must transfer ownership first)
+    // - Users removing themselves (except owners - handled above)
     // - Owners removing anyone
     // - Admins removing members (not other admins or owners)
     const canRemove =
@@ -195,42 +239,72 @@ export const removeMember = withAuthMutation({
     }
 
     await ctx.db.delete(targetMembership._id);
-    return { success: true };
+    return { success: true, channelDeleted: false };
   },
 });
 
 /**
- * Join a channel (self-add). For public channels or invite-only with validation.
- * Currently allows anyone to join any channel (public channels).
+ * Transfer ownership of a channel to another member.
+ * Only the current owner can transfer ownership.
+ * The new owner must already be a member of the channel.
  */
-export const joinChannel = withAuthMutation({
+export const transferOwnership = withAuthMutation({
   args: {
     channelId: v.id("channels"),
+    newOwnerId: v.id("users"),
   },
   handler: async (ctx, args) => {
-    // Check if already a member
-    const existingMembership = await ctx.db
+    // Verify caller is current owner
+    const callerMembership = await ctx.db
       .query("channelMembers")
       .withIndex("by_channel_and_user", (q) =>
         q.eq("channelId", args.channelId).eq("userId", ctx.user._id)
       )
       .first();
 
-    if (existingMembership) {
-      return existingMembership._id; // Already a member
+    if (!callerMembership || callerMembership.role !== "owner") {
+      throw new Error("Only the channel owner can transfer ownership");
     }
 
-    // Add as member
-    const membershipId = await ctx.db.insert("channelMembers", {
-      channelId: args.channelId,
-      userId: ctx.user._id,
-      role: "member",
-      joinedAt: Date.now(),
-    });
+    // Verify new owner is a current member
+    const newOwnerMembership = await ctx.db
+      .query("channelMembers")
+      .withIndex("by_channel_and_user", (q) =>
+        q.eq("channelId", args.channelId).eq("userId", args.newOwnerId)
+      )
+      .first();
 
-    return membershipId;
+    if (!newOwnerMembership) {
+      throw new Error("New owner must be a current member of the channel");
+    }
+
+    if (args.newOwnerId === ctx.user._id) {
+      throw new Error("You are already the owner");
+    }
+
+    // Transfer ownership: promote new owner, demote current owner to admin
+    await ctx.db.patch(newOwnerMembership._id, { role: "owner" });
+    await ctx.db.patch(callerMembership._id, { role: "admin" });
+
+    // Update channel creatorId to reflect new owner
+    await ctx.db.patch(args.channelId, { creatorId: args.newOwnerId });
+
+    return { success: true };
   },
 });
+
+/**
+ * REMOVED: joinChannel mutation
+ *
+ * The joinChannel mutation has been removed as it bypassed the invite-only
+ * security model. In the user-owned channels architecture, users can only
+ * join channels through:
+ * 1. Being the creator (automatically added as owner on channel creation)
+ * 2. Redeeming a valid invite token via channelInvites.redeem
+ * 3. Being added by an owner/admin via addMember
+ *
+ * This prevents unauthorized access by users who might guess or brute-force channel IDs.
+ */
 
 /**
  * Helper function to check membership from other modules.

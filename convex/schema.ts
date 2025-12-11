@@ -41,7 +41,26 @@ export default defineSchema({
     name: v.string(),
     // TODO: Change to v.optional(v.id("teams")) when teams table is added
     teamId: v.optional(v.string()),
-  }),
+    // Channel ownership - optional for backward compatibility with existing data
+    creatorId: v.optional(v.id("users")),
+    // True for user's auto-created default channel on signup
+    isDefault: v.optional(v.boolean()),
+  })
+    .index("by_creator", ["creatorId"]),
+
+  // Channel invites for invite link access
+  channelInvites: defineTable({
+    channelId: v.id("channels"),
+    token: v.string(), // Random 12-char alphanumeric token
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    expiresAt: v.optional(v.number()), // Optional expiry timestamp
+    maxUses: v.optional(v.number()), // Optional usage limit
+    uses: v.number(), // Current usage count
+  })
+    .index("by_token", ["token"])
+    .index("by_channel", ["channelId"])
+    .index("by_expires", ["expiresAt"]), // For efficient cleanup cron
 
   // Channel membership for authorization
   channelMembers: defineTable({

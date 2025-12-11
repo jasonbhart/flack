@@ -1,4 +1,3 @@
-import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { withAuthQuery, withAuthMutation } from "./authMiddleware";
 import { checkMembership } from "./channelMembers";
@@ -64,21 +63,6 @@ export const send = withAuthMutation({
     });
 
     return messageId;
-  },
-});
-
-/**
- * Legacy unauthenticated message listing for backwards compatibility.
- * TODO: Remove once all clients are updated to use authenticated endpoints.
- * @deprecated Use authenticated `list` query instead
- */
-export const listPublic = query({
-  args: { channelId: v.id("channels") },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("messages")
-      .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
-      .collect();
   },
 });
 
