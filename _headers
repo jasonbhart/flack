@@ -1,3 +1,12 @@
+# Cloudflare Pages security headers for static assets
+#
+# Note: These headers are ALSO set in src/hooks.server.ts for SSR responses.
+# This duplication is intentional:
+# - _headers: Applied by Cloudflare edge to static assets (CSS, JS, images)
+# - hooks.server.ts: Applied by SvelteKit to server-rendered HTML responses
+#
+# Keep both files in sync when updating security policies.
+
 /*
   Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://*.convex.cloud https://*.convex.cloud; img-src 'self' data: blob:; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
   X-Content-Type-Options: nosniff
