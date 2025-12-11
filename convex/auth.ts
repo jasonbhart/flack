@@ -3,7 +3,7 @@ import { components } from "./_generated/api";
 import { Resend } from "@convex-dev/resend";
 import { v } from "convex/values";
 import { withAuthMutation } from "./authMiddleware";
-import { checkMultipleRateLimits, RATE_LIMITS } from "./rateLimiter";
+import { checkRateLimit, checkMultipleRateLimits, RATE_LIMITS } from "./rateLimiter";
 import { hashToken, normalizeEmail } from "./authHelpers";
 
 // Token expiry times
@@ -35,8 +35,6 @@ function generateCode(): string {
   return String(num % 1000000).padStart(CODE_LENGTH, "0");
 }
 
-// Rate limiting: minimum time between magic link requests per email
-const EMAIL_RATE_LIMIT_MS = 60 * 1000; // 1 minute between requests
 
 /**
  * Get or create a user by email.
@@ -264,6 +262,7 @@ const MAX_CODE_ATTEMPTS = 5;
 
 /**
  * Verify a 6-digit code (for desktop app where magic links don't work)
+ * Rate limited to prevent brute-force lockout attacks.
  */
 export const verifyCode = mutation({
   args: {
@@ -273,6 +272,19 @@ export const verifyCode = mutation({
   handler: async (ctx, args) => {
     const email = normalizeEmail(args.email);
     const code = args.code.replace(/\s/g, ""); // Remove any spaces
+
+    // Rate limit to prevent attackers from rapidly exhausting attempts
+    const rateLimitResult = await checkRateLimit(
+      ctx,
+      `code_verify:${email}`,
+      "minute",
+      RATE_LIMITS.codeVerification.perMinutePerEmail
+    );
+    if (!rateLimitResult.allowed) {
+      throw new Error(
+        `Too many attempts. Please wait ${rateLimitResult.retryAfterSeconds} seconds.`
+      );
+    }
 
     // Validate code format
     if (!/^\d{6}$/.test(code)) {
