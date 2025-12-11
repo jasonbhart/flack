@@ -1,27 +1,56 @@
 <script lang="ts">
   import type { Id } from "../../../convex/_generated/dataModel";
   import { unreadCounts } from "$lib/stores/unreadCounts.svelte";
+  import NewChannelModal from "./NewChannelModal.svelte";
 
   interface Channel {
     _id: Id<"channels">;
     name: string;
+    creatorId?: Id<"users">;
+    creatorName?: string | null;
+    role?: "owner" | "admin" | "member";
   }
 
   let {
     channels,
     activeChannelId,
+    currentUserId,
+    sessionToken,
     onSelect,
   }: {
     channels: Channel[];
     activeChannelId: Id<"channels"> | null;
+    currentUserId: Id<"users"> | null;
+    sessionToken: string;
     onSelect: (channelId: Id<"channels">) => void;
   } = $props();
+
+  // Modal state
+  let showNewChannelModal = $state(false);
 
   // Get unread count with 99+ cap for display
   function getDisplayCount(channelId: string): string | null {
     const count = unreadCounts.getCount(channelId);
     if (count === 0) return null;
     return count > 99 ? "99+" : count.toString();
+  }
+
+  // Get display name for a channel
+  // Shows owner's name prefix if not owned by current user
+  function getDisplayName(channel: Channel): string {
+    // If we don't know the current user or creator, just show the name
+    if (!currentUserId || !channel.creatorId) {
+      return channel.name;
+    }
+
+    // If current user owns this channel, show plain name
+    if (channel.creatorId === currentUserId) {
+      return channel.name;
+    }
+
+    // Show owner's name prefix for others' channels
+    const ownerName = channel.creatorName || "Unknown";
+    return `${ownerName}'s ${channel.name}`;
   }
 
   // Track focused index for roving tabindex pattern
@@ -71,33 +100,62 @@
       // Focus the new button
       const buttons = (e.currentTarget as HTMLElement)
         .closest('nav')
-        ?.querySelectorAll('button');
-      buttons?.[newIndex]?.focus();
+        ?.querySelectorAll('button[data-channel]');
+      (buttons?.[newIndex] as HTMLElement)?.focus();
     }
+  }
+
+  function handleNewChannelCreated(channelId: Id<"channels">) {
+    onSelect(channelId);
   }
 </script>
 
-<nav role="navigation" aria-label="Channel list" class="flex flex-col gap-1">
-  {#each channels as channel, index (channel._id)}
-    {@const unreadDisplay = getDisplayCount(channel._id)}
-    <button
-      onclick={() => onSelect(channel._id)}
-      onkeydown={(e) => handleKeydown(e, index)}
-      aria-label="Channel {channel.name}{unreadDisplay ? `, ${unreadDisplay} unread messages` : ''}"
-      aria-current={channel._id === activeChannelId ? "page" : undefined}
-      tabindex={index === focusedIndex ? 0 : -1}
-      class="flex items-center justify-between text-left py-1 px-2 rounded text-sm transition-colors
-        focus:outline-none focus:ring-2 focus:ring-volt focus:ring-offset-1
-        {channel._id === activeChannelId
-          ? 'bg-volt/10 font-bold text-volt'
-          : 'text-[var(--text-secondary)] hover:bg-ink-700/50'}"
-    >
-      <span># {channel.name}</span>
-      {#if unreadDisplay}
-        <span class="ml-2 min-w-[1.25rem] h-5 flex items-center justify-center px-1.5 text-xs font-bold bg-volt text-white rounded-full">
-          {unreadDisplay}
-        </span>
-      {/if}
-    </button>
-  {/each}
-</nav>
+<div class="flex flex-col gap-2">
+  <!-- Channel list -->
+  <nav role="navigation" aria-label="Channel list" class="flex flex-col gap-1">
+    {#each channels as channel, index (channel._id)}
+      {@const unreadDisplay = getDisplayCount(channel._id)}
+      {@const displayName = getDisplayName(channel)}
+      <button
+        data-channel
+        onclick={() => onSelect(channel._id)}
+        onkeydown={(e) => handleKeydown(e, index)}
+        aria-label="Channel {displayName}{unreadDisplay ? `, ${unreadDisplay} unread messages` : ''}"
+        aria-current={channel._id === activeChannelId ? "page" : undefined}
+        tabindex={index === focusedIndex ? 0 : -1}
+        class="flex items-center justify-between text-left py-1 px-2 rounded text-sm transition-colors
+          focus:outline-none focus:ring-2 focus:ring-volt focus:ring-offset-1
+          {channel._id === activeChannelId
+            ? 'bg-volt/10 font-bold text-volt'
+            : 'text-[var(--text-secondary)] hover:bg-ink-700/50'}"
+      >
+        <span class="truncate"># {displayName}</span>
+        {#if unreadDisplay}
+          <span class="ml-2 min-w-[1.25rem] h-5 flex items-center justify-center px-1.5 text-xs font-bold bg-volt text-white rounded-full shrink-0">
+            {unreadDisplay}
+          </span>
+        {/if}
+      </button>
+    {/each}
+  </nav>
+
+  <!-- New Channel button -->
+  <button
+    onclick={() => showNewChannelModal = true}
+    class="flex items-center gap-2 py-1 px-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-ink-700/50 rounded transition-colors"
+    aria-label="Create new channel"
+  >
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+    </svg>
+    <span>New Channel</span>
+  </button>
+</div>
+
+<!-- New Channel Modal -->
+<NewChannelModal
+  isOpen={showNewChannelModal}
+  {sessionToken}
+  onClose={() => showNewChannelModal = false}
+  onCreate={handleNewChannelCreated}
+/>

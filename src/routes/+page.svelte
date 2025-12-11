@@ -26,6 +26,7 @@
   import EmptyState from "$lib/components/EmptyState.svelte";
   import QuickSwitcher from "$lib/components/QuickSwitcher.svelte";
   import KeyboardShortcutsHelp from "$lib/components/KeyboardShortcutsHelp.svelte";
+  import InviteModal from "$lib/components/InviteModal.svelte";
   import { responsive } from "$lib/utils/responsive.svelte";
 
   // Get Convex client for mutations
@@ -55,6 +56,32 @@
     if (sessionQuery.data === null && browser) {
       goto("/auth/login");
     }
+  });
+
+  // Handle pending invite redemption after login
+  $effect(() => {
+    if (!browser || !sessionQuery.data || !authStore.sessionToken) return;
+
+    const pendingInvite = localStorage.getItem("pendingInvite");
+    if (!pendingInvite) return;
+
+    // Clear immediately to prevent multiple attempts
+    localStorage.removeItem("pendingInvite");
+
+    // Redeem the invite
+    (async () => {
+      try {
+        const result = await client.mutation(api.channelInvites.redeem, {
+          sessionToken: authStore.sessionToken!,
+          token: pendingInvite,
+        });
+        // Navigate to the joined channel
+        activeChannelId = result.channelId;
+      } catch (err) {
+        // Silently fail - user is already on the main page
+        console.error("Failed to redeem pending invite:", err);
+      }
+    })();
   });
 
   // Handle logout
@@ -92,7 +119,9 @@
   // Inject send mutation into QueueManager
   $effect(() => {
     messageQueue.setSendMutation(async (args) => {
-      await client.mutation(api.messages.send, args);
+      // Strip authorName (derived from session on backend) and sessionToken (handled by wrapper)
+      const { authorName, sessionToken, ...mutationArgs } = args;
+      await client.mutation(api.messages.send, { ...mutationArgs, sessionToken });
     }, getSessionToken);
   });
 
@@ -150,7 +179,10 @@
   });
 
   // Queries
-  const channelsQuery = useQuery(api.channels.list, {});
+  const channelsQuery = useQuery(
+    api.channels.list,
+    () => authStore.sessionToken ? { sessionToken: authStore.sessionToken } : "skip"
+  );
   const messagesQuery = useQuery(
     api.messages.list,
     () => (activeChannelId ? { channelId: activeChannelId } : "skip")
@@ -371,6 +403,21 @@
   // Modal states
   let quickSwitcherOpen = $state(false);
   let shortcutsHelpOpen = $state(false);
+  let inviteModalOpen = $state(false);
+
+  // Get current user's role in active channel
+  const currentUserRole = $derived(() => {
+    const channels = channelsQuery.data;
+    if (!channels || !activeChannelId) return null;
+    const channel = channels.find(c => c._id === activeChannelId);
+    return channel?.role ?? null;
+  });
+
+  // Can current user invite to active channel?
+  const canInvite = $derived(() => {
+    const role = currentUserRole();
+    return role === "owner" || role === "admin";
+  });
 
   // Global keyboard shortcuts
   function handleGlobalKeydown(e: KeyboardEvent) {
@@ -464,6 +511,8 @@
     <ChannelList
       channels={channelsQuery.data}
       {activeChannelId}
+      currentUserId={(authStore.user?.id as Id<"users">) ?? null}
+      sessionToken={authStore.sessionToken ?? ""}
       onSelect={handleChannelSelect}
     />
   {:else if channelsQuery.isLoading}
@@ -573,6 +622,25 @@
       class="flex-1 bg-[var(--bg-primary)] flex flex-col"
     >
       {#if activeChannelId}
+        <!-- Channel header with Invite button -->
+        <div class="flex items-center justify-between px-4 py-3 border-b border-[var(--border-default)]">
+          <h2 class="text-lg font-semibold text-[var(--text-primary)]">
+            #{activeChannelName ?? ""}
+          </h2>
+          {#if canInvite()}
+            <button
+              onclick={() => inviteModalOpen = true}
+              class="flex items-center gap-1.5 px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-volt/10 rounded transition-colors"
+              aria-label="Invite people to this channel"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+              </svg>
+              <span>Invite</span>
+            </button>
+          {/if}
+        </div>
+
         {#if messagesQuery.error}
           <div class="flex-1 flex items-center justify-center">
             <ErrorBoundary
@@ -609,3 +677,14 @@
     </main>
   </div>
 </div>
+
+<!-- Invite Modal -->
+{#if activeChannelId && activeChannelName && authStore.sessionToken}
+  <InviteModal
+    isOpen={inviteModalOpen}
+    channelId={activeChannelId}
+    channelName={activeChannelName}
+    sessionToken={authStore.sessionToken}
+    onClose={() => inviteModalOpen = false}
+  />
+{/if}
