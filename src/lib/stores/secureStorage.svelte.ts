@@ -3,10 +3,34 @@ import { browser } from "$app/environment";
 /**
  * Secure storage abstraction for session tokens.
  *
- * - Tauri desktop: Uses plugin-store for encrypted file-based storage
- * - Web: Uses in-memory storage (cleared on page refresh for security)
+ * Platform behavior:
+ * - Tauri desktop: Uses plugin-store for encrypted file-based storage (persists)
+ * - Web browser: Uses in-memory storage only (cleared on page refresh)
  *
- * Tokens are NEVER stored in localStorage to prevent XSS attacks.
+ * ## Web Storage Security Trade-off
+ *
+ * On web, tokens are stored ONLY in memory (not localStorage/sessionStorage).
+ * This is a deliberate HIGH SECURITY / LOW CONVENIENCE trade-off:
+ *
+ * Pros:
+ * - XSS attacks cannot steal persisted tokens (nothing to steal)
+ * - Token exposure window limited to current session
+ * - Closing browser tab = automatic logout
+ *
+ * Cons:
+ * - Users must re-authenticate on every page refresh
+ * - Users must re-authenticate when opening new tabs
+ * - Poor UX compared to typical web apps
+ *
+ * ## Alternatives (if persistence is needed on web)
+ *
+ * 1. localStorage: Accept XSS risk for better UX (most common)
+ * 2. HTTP-only cookies: Requires server-side session management
+ *    (different Convex auth flow, protects against XSS)
+ * 3. sessionStorage: Persists during tab session but not across tabs
+ *
+ * Current choice prioritizes security for this demo app.
+ * Production apps should evaluate based on threat model.
  */
 
 // Storage keys

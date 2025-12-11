@@ -35,16 +35,24 @@ function generateCode(): string {
 const EMAIL_RATE_LIMIT_MS = 60 * 1000; // 1 minute between requests
 
 /**
- * Get or create a user by email, handling race conditions.
- * If two requests try to create the same user simultaneously,
- * the second one will find the user created by the first.
+ * Get or create a user by email.
+ *
+ * Race condition handling: Convex uses serializable transactions.
+ * If two requests try to create the same user simultaneously:
+ * 1. First transaction reads null, inserts user, commits
+ * 2. Second transaction's read becomes invalid (phantom read detected)
+ * 3. Convex automatically retries second transaction, which now finds the user
+ *
+ * Note: Convex doesn't enforce unique constraints on non-ID fields.
+ * We rely on transaction retries for correctness. For strict uniqueness,
+ * consider using email as a document ID in a separate lookup table.
  */
 async function getOrCreateUser(
   ctx: { db: import("./_generated/server").MutationCtx["db"] },
   email: string,
   options: { upgradeTemp?: boolean } = {}
 ): Promise<import("./_generated/dataModel").Doc<"users">> {
-  // First, try to find existing user
+  // Try to find existing user
   let user = await ctx.db
     .query("users")
     .withIndex("by_email", (q) => q.eq("email", email))
@@ -59,35 +67,16 @@ async function getOrCreateUser(
     return user!;
   }
 
-  // User doesn't exist - try to create
-  try {
-    const userId = await ctx.db.insert("users", {
-      email,
-      name: email.split("@")[0], // Default name from email
-      isTemp: false,
-    });
-    const newUser = await ctx.db.get(userId);
-    return newUser!;
-  } catch (error) {
-    // If insert failed due to race condition (another request created the user),
-    // try to find the user again
-    const existingUser = await ctx.db
-      .query("users")
-      .withIndex("by_email", (q) => q.eq("email", email))
-      .first();
+  // User doesn't exist - create new user
+  // Convex's serializable isolation handles race conditions via automatic retry
+  const userId = await ctx.db.insert("users", {
+    email,
+    name: email.split("@")[0], // Default name from email
+    isTemp: false,
+  });
 
-    if (existingUser) {
-      // Found the user created by another request
-      if (options.upgradeTemp && existingUser.isTemp) {
-        await ctx.db.patch(existingUser._id, { isTemp: false });
-        return (await ctx.db.get(existingUser._id))!;
-      }
-      return existingUser;
-    }
-
-    // If still no user, re-throw the error
-    throw error;
-  }
+  const newUser = await ctx.db.get(userId);
+  return newUser!;
 }
 
 /**

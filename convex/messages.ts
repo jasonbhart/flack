@@ -86,6 +86,22 @@ export const listPublic = query({
  * List message counts per channel for unread tracking.
  * Returns channelId and message count for all channels the user has access to.
  * Lightweight query for detecting new messages in inactive channels.
+ *
+ * ## Performance Note (N+1 Query Pattern)
+ *
+ * This query performs one DB query per channel (N+1 pattern).
+ * For users in many channels, this may become a bottleneck.
+ *
+ * Current approach is acceptable for:
+ * - Small teams (<20 channels per user)
+ * - Infrequent polling (Convex subscriptions minimize calls)
+ *
+ * If performance degrades, consider:
+ * 1. Denormalize: Add `messageCount` field to channelMembers, update on message insert
+ * 2. Denormalize: Add `lastMessageTime` to channels table
+ * 3. Use a separate "unreadCounts" table updated by triggers
+ *
+ * Trade-off: Current simplicity vs. write complexity of denormalization
  */
 export const listLatestPerChannel = withAuthQuery({
   args: {},
@@ -98,7 +114,8 @@ export const listLatestPerChannel = withAuthQuery({
 
     const channelIds = memberships.map((m) => m.channelId);
 
-    // Get message counts for each channel
+    // N+1 query: one query per channel
+    // See performance note above for optimization strategies
     const results = await Promise.all(
       channelIds.map(async (channelId) => {
         const messages = await ctx.db
