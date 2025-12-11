@@ -201,17 +201,23 @@
   );
   const messagesQuery = useQuery(
     api.messages.list,
-    () => (activeChannelId ? { channelId: activeChannelId } : "skip")
+    () => (activeChannelId && authStore.sessionToken
+      ? { channelId: activeChannelId, sessionToken: authStore.sessionToken }
+      : "skip")
   );
 
   // Presence queries
   const onlineUsersQuery = useQuery(
     api.presence.listOnline,
-    () => (activeChannelId ? { channelId: activeChannelId } : "skip")
+    () => (activeChannelId && authStore.sessionToken
+      ? { channelId: activeChannelId, sessionToken: authStore.sessionToken }
+      : "skip")
   );
   const typingUsersQuery = useQuery(
     api.presence.listTyping,
-    () => (activeChannelId ? { channelId: activeChannelId } : "skip")
+    () => (activeChannelId && authStore.sessionToken
+      ? { channelId: activeChannelId, sessionToken: authStore.sessionToken }
+      : "skip")
   );
 
   // Auto-select channel when loaded (validate saved or fall back to first)
@@ -240,7 +246,10 @@
 
   // Query for all channels' latest message to detect new messages
   // This is a lightweight query that just returns the count/latest timestamp
-  const allChannelsMessagesQuery = useQuery(api.messages.listLatestPerChannel, {});
+  const allChannelsMessagesQuery = useQuery(
+    api.messages.listLatestPerChannel,
+    () => authStore.sessionToken ? { sessionToken: authStore.sessionToken } : "skip"
+  );
 
   // Detect new messages in inactive channels and increment unread counts
   $effect(() => {
