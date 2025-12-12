@@ -25,6 +25,7 @@
 		"@tauri-apps/api": "^2",
 		"@tauri-apps/cli": "^2",
 		"@tauri-apps/plugin-store": "^2",
+		"@tauri-apps/plugin-notification": "^2",
 		"@types/node": "^24.10.2",
 		"convex-test": "^0.0.41",
 		"svelte": "^5.43.8",

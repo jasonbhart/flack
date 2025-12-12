@@ -6,6 +6,7 @@
   import { api } from "../../convex/_generated/api";
   import type { Id, Doc } from "../../convex/_generated/dataModel";
   import type { MergedMessage } from "$lib/types/messages";
+  import type { MentionableUser } from "$lib/types/mentions";
   import { messageQueue } from "$lib/stores/QueueManager.svelte";
   import { presenceManager } from "$lib/stores/presence.svelte";
   import { authStore } from "$lib/stores/auth.svelte";
@@ -28,6 +29,10 @@
   import QuickSwitcher from "$lib/components/QuickSwitcher.svelte";
   import KeyboardShortcutsHelp from "$lib/components/KeyboardShortcutsHelp.svelte";
   import InviteModal from "$lib/components/InviteModal.svelte";
+  import NotificationPrompt from "$lib/components/NotificationPrompt.svelte";
+  import NotificationSettings from "$lib/components/NotificationSettings.svelte";
+  import { notificationService } from "$lib/services/NotificationService.svelte";
+  import { systemTrayManager } from "$lib/services/SystemTrayManager.svelte";
   import { responsive } from "$lib/utils/responsive.svelte";
 
   // Get Convex client for mutations
@@ -221,6 +226,27 @@
       : "skip")
   );
 
+  // Channel members query for @mention autocomplete
+  const channelMembersQuery = useQuery(
+    api.channelMembers.listMembers,
+    () => (activeChannelId && authStore.sessionToken
+      ? { channelId: activeChannelId, sessionToken: authStore.sessionToken }
+      : "skip")
+  );
+
+  // Transform channel members to MentionableUser format for autocomplete
+  const channelMembersForMention = $derived.by((): MentionableUser[] => {
+    const members = channelMembersQuery.data;
+    if (!members) return [];
+    return members
+      .filter((m): m is typeof m & { user: NonNullable<typeof m.user> } => m.user !== null)
+      .map((m) => ({
+        id: m.user._id,
+        name: m.user.name,
+        avatarUrl: m.user.avatarUrl,
+      }));
+  });
+
   // Auto-select channel when loaded (validate saved or fall back to first)
   // Using untrack to prevent infinite loops when reading state we also write to
   $effect(() => {
@@ -257,10 +283,12 @@
     () => authStore.sessionToken ? { sessionToken: authStore.sessionToken } : "skip"
   );
 
-  // Detect new messages in inactive channels and increment unread counts
+  // Detect new messages in inactive channels and increment unread counts + trigger notifications
   $effect(() => {
     const latestMessages = allChannelsMessagesQuery.data;
     if (!latestMessages || !activeChannelId) return;
+
+    const channels = untrack(() => channelsQuery.data);
 
     for (const channelData of latestMessages) {
       const channelId = channelData.channelId;
@@ -277,6 +305,42 @@
         // New messages arrived in an inactive channel
         const newMessages = messageCount - prevCount;
         unreadCounts.incrementUnread(channelId, newMessages);
+
+        // Check if current user is mentioned in the latest message
+        if (channelData.latestMessage) {
+          const currentUserId = sessionQuery.data?.id;
+          const mentions = channelData.latestMessage.mentions;
+          const specialMentions = channelData.latestMessage.specialMentions;
+
+          // Count as mention if directly @mentioned or @channel/@here
+          const isMentioned = currentUserId && mentions?.includes(currentUserId);
+          const hasBroadcastMention = specialMentions && specialMentions.length > 0;
+
+          if (isMentioned || hasBroadcastMention) {
+            unreadCounts.incrementMentions(channelId);
+          }
+        }
+
+        // Trigger notification for new messages (if conditions are met)
+        if (channelData.latestMessage && notificationService.shouldNotify(
+          channelId,
+          channelData.latestMessage.authorId,
+          channelData.latestMessage.mentions,
+          channelData.latestMessage.specialMentions
+        )) {
+          const channelName = channels?.find(c => c._id === channelId)?.name ?? "channel";
+          notificationService.show({
+            title: `New message in #${channelName}`,
+            body: channelData.latestMessage.body,
+            channelId,
+            channelName,
+            messageId: channelData.latestMessage._id,
+            authorId: channelData.latestMessage.authorId,
+            authorName: channelData.latestMessage.authorName,
+            mentions: channelData.latestMessage.mentions,
+            specialMentions: channelData.latestMessage.specialMentions,
+          });
+        }
       }
 
       prevMessageCounts[channelId] = messageCount;
@@ -330,13 +394,15 @@
    */
   const mergedMessages = $derived.by(() => {
     // Step 1: Get server-confirmed messages from Convex real-time subscription
-    const serverMessages = (messagesQuery.data ?? []) as Doc<"messages">[];
+    // The server now returns mentionMap for each message (username -> userId)
+    type ServerMessageWithMentionMap = Doc<"messages"> & { mentionMap?: Record<string, string> };
+    const serverMessages = (messagesQuery.data ?? []) as ServerMessageWithMentionMap[];
 
     // Step 2: Build set of clientMutationIds that the server has confirmed
     // This allows O(1) lookup to check if a local queue entry has been confirmed
     const confirmedIds = new Set(
       serverMessages
-        .map((m: Doc<"messages">) => m.clientMutationId)
+        .map((m) => m.clientMutationId)
         .filter(Boolean)
     );
 
@@ -354,7 +420,7 @@
     // Step 4: Convert server messages to unified MergedMessage format
     // All server messages get status="confirmed" (they're the source of truth)
     const merged: MergedMessage[] = serverMessages.map(
-      (m: Doc<"messages">) => ({
+      (m) => ({
         _id: m._id,
         _creationTime: m._creationTime,
         clientMutationId: m.clientMutationId ?? m._id, // Fallback for old messages
@@ -362,6 +428,7 @@
         authorName: m.authorName,
         body: m.body,
         status: "confirmed" as const,
+        mentionMap: m.mentionMap, // Include mentionMap for self-mention highlighting
       })
     );
 
@@ -377,6 +444,7 @@
         status: entry.status, // "pending" | "sending" | "failed"
         error: entry.error,
         retryCount: entry.retryCount,
+        // Pending messages don't have mentionMap yet (not confirmed by server)
       });
     });
 
@@ -390,6 +458,18 @@
 
     const clientMutationId = crypto.randomUUID();
     const authorName = presenceManager.getUserName();
+
+    // Record typing for notification suppression
+    notificationService.recordTyping(activeChannelId);
+
+    // Show notification prompt after first message (if eligible)
+    if (!hasSentFirstMessage && notificationService.shouldShowPrompt()) {
+      hasSentFirstMessage = true;
+      // Slight delay so message sends first
+      setTimeout(() => {
+        showNotificationPrompt = true;
+      }, 1000);
+    }
 
     // Enqueue message (will be sent automatically if online)
     await messageQueue.enqueue({
@@ -435,6 +515,32 @@
   let quickSwitcherOpen = $state(false);
   let shortcutsHelpOpen = $state(false);
   let inviteModalOpen = $state(false);
+  let settingsOpen = $state(false);
+
+  // Notification prompt state
+  let showNotificationPrompt = $state(false);
+  let hasSentFirstMessage = $state(false);
+
+  // Initialize notification service with user context
+  $effect(() => {
+    if (sessionQuery.data) {
+      notificationService.setCurrentUserId(sessionQuery.data.id);
+    }
+  });
+
+  // Track focused channel for notification suppression
+  $effect(() => {
+    notificationService.setFocusedChannelId(activeChannelId);
+  });
+
+  // Sync unread counts to system tray badge (Tauri only)
+  $effect(() => {
+    const totalUnread = unreadCounts.totalUnread;
+    // Debounce by using untrack to avoid triggering on every micro-change
+    untrack(() => {
+      systemTrayManager.setBadge(totalUnread);
+    });
+  });
 
   // Get current user's role in active channel
   const currentUserRole = $derived(() => {
@@ -562,6 +668,14 @@
     isQueueFull={messageQueue.isQueueFull}
   />
 
+  <!-- Notification Permission Prompt -->
+  {#if showNotificationPrompt}
+    <NotificationPrompt
+      onEnable={() => showNotificationPrompt = false}
+      onDismiss={() => showNotificationPrompt = false}
+    />
+  {/if}
+
 <!-- Sidebar content (shared between desktop aside and mobile drawer) -->
 {#snippet sidebarContent()}
   <h2 class="text-lg font-bold mb-4">Flack</h2>
@@ -627,6 +741,27 @@
       >
         Sign in
       </a>
+    {/if}
+
+    <!-- Settings Button -->
+    <button
+      onclick={() => settingsOpen = !settingsOpen}
+      aria-label="Toggle settings"
+      aria-expanded={settingsOpen}
+      class="w-full flex items-center gap-2 px-3 py-2 rounded text-sm text-[var(--text-secondary)] hover:bg-volt/10 hover:text-volt transition-colors"
+    >
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+      <span>Settings</span>
+    </button>
+
+    <!-- Collapsible Settings Panel -->
+    {#if settingsOpen}
+      <div class="mt-2 p-3 bg-[var(--bg-tertiary)] rounded-lg border border-[var(--border-default)]">
+        <NotificationSettings />
+      </div>
     {/if}
 
     <!-- Theme Toggle -->
@@ -728,7 +863,7 @@
             <span class="text-[var(--text-secondary)]">Select a channel to start chatting</span>
           </div>
         {:else}
-          <MessageList messages={mergedMessages} onRetry={handleRetry} channelName={activeChannelName} />
+          <MessageList messages={mergedMessages} onRetry={handleRetry} channelName={activeChannelName} channelId={activeChannelId} currentUserId={(authStore.user?.id as Id<"users">) ?? null} />
         {/if}
         {#if typingUsersQuery.data}
           <TypingIndicator
@@ -740,6 +875,7 @@
           onSend={handleSend}
           onTyping={(isTyping) => presenceManager.setTyping(isTyping)}
           bind:inputRef={chatInputRef}
+          channelMembers={channelMembersForMention}
         />
       {:else}
         <div

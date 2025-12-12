@@ -1,4 +1,5 @@
 import { browser } from "$app/environment";
+import { calculateDividerInfo } from "$lib/utils/dividerCalculation";
 
 const STORAGE_KEY = "flack_last_read_timestamps";
 
@@ -9,6 +10,9 @@ interface LastReadTimestamps {
 class UnreadCountsStore {
   // In-memory counts per channel
   private counts = $state<Record<string, number>>({});
+
+  // Mention counts per channel (messages where current user is @mentioned)
+  private mentionCounts = $state<Record<string, number>>({});
 
   // Last read timestamps (persisted to localStorage)
   private lastReadTimestamps = $state<LastReadTimestamps>({});
@@ -59,7 +63,7 @@ class UnreadCountsStore {
 
   /**
    * Mark a channel as read.
-   * Sets last read timestamp to now and clears unread count.
+   * Sets last read timestamp to now and clears unread count and mention count.
    */
   markAsRead(channelId: string) {
     this.lastReadTimestamps = {
@@ -68,6 +72,10 @@ class UnreadCountsStore {
     };
     this.counts = {
       ...this.counts,
+      [channelId]: 0
+    };
+    this.mentionCounts = {
+      ...this.mentionCounts,
       [channelId]: 0
     };
     this.saveToStorage();
@@ -86,11 +94,31 @@ class UnreadCountsStore {
   }
 
   /**
+   * Increment mention count for a channel.
+   * Called when a message mentions the current user (direct or @channel/@here).
+   */
+  incrementMentions(channelId: string, amount: number = 1) {
+    const current = this.mentionCounts[channelId] ?? 0;
+    this.mentionCounts = {
+      ...this.mentionCounts,
+      [channelId]: current + amount
+    };
+  }
+
+  /**
    * Get unread count for a channel.
    * Returns 0 if no unreads tracked.
    */
   getCount(channelId: string): number {
     return this.counts[channelId] ?? 0;
+  }
+
+  /**
+   * Get mention count for a channel.
+   * Returns 0 if no mentions tracked.
+   */
+  getMentionCount(channelId: string): number {
+    return this.mentionCounts[channelId] ?? 0;
   }
 
   /**
@@ -130,6 +158,7 @@ class UnreadCountsStore {
    */
   clearAll() {
     this.counts = {};
+    this.mentionCounts = {};
     this.lastReadTimestamps = {};
 
     if (browser) {
@@ -147,6 +176,41 @@ class UnreadCountsStore {
    */
   get allCounts(): Record<string, number> {
     return this.counts;
+  }
+
+  /**
+   * Get all mention counts as a reactive object.
+   * Used by ChannelList to display @ badges.
+   */
+  get allMentionCounts(): Record<string, number> {
+    return this.mentionCounts;
+  }
+
+  /**
+   * Get total unread count across all channels.
+   * Used for dock badge / system tray badge.
+   */
+  get totalUnread(): number {
+    return Object.values(this.counts).reduce((sum, count) => sum + count, 0);
+  }
+
+  /**
+   * Get total mention count across all channels.
+   * Used for dock badge priority / system tray badge.
+   */
+  get totalMentions(): number {
+    return Object.values(this.mentionCounts).reduce((sum, count) => sum + count, 0);
+  }
+
+  /**
+   * Get divider information for displaying "New" separator in message list.
+   * Delegates to exported calculateDividerInfo for testability.
+   */
+  getDividerInfo(
+    channelId: string,
+    messages: { _creationTime: number }[]
+  ): { messageIndex: number; unreadCount: number } | null {
+    return calculateDividerInfo(this.lastReadTimestamps[channelId], messages);
   }
 }
 

@@ -1,10 +1,60 @@
 import { v } from "convex/values";
 import { withAuthQuery, withAuthMutation } from "./authMiddleware";
 import { checkMembership } from "./channelMembers";
+import type { Id } from "./_generated/dataModel";
+
+// Regex pattern for @mentions - matches @username (alphanumeric + underscores)
+// NOTE: Keep in sync with src/lib/utils/mentionParser.ts (client-side parser)
+const MENTION_PATTERN = /@([a-zA-Z][a-zA-Z0-9_]*)/g;
+
+// Special mention types
+type SpecialMention = "channel" | "here";
+const SPECIAL_MENTIONS: SpecialMention[] = ["channel", "here"];
+
+/**
+ * Parse mentions from message text (server-side).
+ * Returns usernames and special mentions found.
+ */
+function parseMentions(text: string): {
+  usernames: string[];
+  specialMentions: SpecialMention[];
+} {
+  const usernames: string[] = [];
+  const specialMentions: SpecialMention[] = [];
+
+  // Reset regex state
+  MENTION_PATTERN.lastIndex = 0;
+
+  let match: RegExpExecArray | null;
+  while ((match = MENTION_PATTERN.exec(text)) !== null) {
+    const username = match[1];
+    const startIndex = match.index;
+
+    // Check for escaped @@ (skip if preceded by @)
+    if (startIndex > 0 && text[startIndex - 1] === "@") {
+      continue;
+    }
+
+    // Check if this is a special mention
+    const lowerUsername = username.toLowerCase();
+    if (SPECIAL_MENTIONS.includes(lowerUsername as SpecialMention)) {
+      if (!specialMentions.includes(lowerUsername as SpecialMention)) {
+        specialMentions.push(lowerUsername as SpecialMention);
+      }
+    } else {
+      if (!usernames.includes(username)) {
+        usernames.push(username);
+      }
+    }
+  }
+
+  return { usernames, specialMentions };
+}
 
 /**
  * List messages in a channel.
  * Requires authentication and channel membership.
+ * Returns messages with mentionMap for resolving @username -> userId.
  */
 export const list = withAuthQuery({
   args: { channelId: v.id("channels") },
@@ -15,10 +65,51 @@ export const list = withAuthQuery({
       throw new Error("Unauthorized: Not a member of this channel");
     }
 
-    return await ctx.db
+    const messages = await ctx.db
       .query("messages")
       .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
       .collect();
+
+    // Build mentionMap for each message (username -> userId)
+    // Collect all unique mentioned user IDs across all messages
+    const allMentionedUserIds = new Set<Id<"users">>();
+    for (const msg of messages) {
+      if (msg.mentions) {
+        for (const userId of msg.mentions) {
+          allMentionedUserIds.add(userId);
+        }
+      }
+    }
+
+    // Fetch all mentioned users in one batch
+    const mentionedUsers = await Promise.all(
+      Array.from(allMentionedUserIds).map((id) => ctx.db.get(id))
+    );
+
+    // Build userId -> name lookup
+    const userIdToName: Record<string, string> = {};
+    for (const user of mentionedUsers) {
+      if (user) {
+        userIdToName[user._id.toString()] = user.name;
+      }
+    }
+
+    // Attach mentionMap to each message
+    return messages.map((msg) => {
+      const mentionMap: Record<string, string> = {};
+      if (msg.mentions) {
+        for (const userId of msg.mentions) {
+          const userName = userIdToName[userId.toString()];
+          if (userName) {
+            mentionMap[userName] = userId.toString();
+          }
+        }
+      }
+      return {
+        ...msg,
+        mentionMap,
+      };
+    });
   },
 });
 
@@ -26,6 +117,7 @@ export const list = withAuthQuery({
  * Send a message to a channel.
  * Requires authentication and channel membership.
  * Maintains idempotency via clientMutationId.
+ * Parses @mentions and validates them against channel members.
  */
 export const send = withAuthMutation({
   args: {
@@ -53,6 +145,33 @@ export const send = withAuthMutation({
       return existing._id;
     }
 
+    // Parse mentions from message body
+    const { usernames, specialMentions } = parseMentions(args.body);
+
+    // Resolve usernames to user IDs and validate channel membership
+    const validMentions: Id<"users">[] = [];
+    if (usernames.length > 0) {
+      // Get all channel members for validation
+      const channelMemberships = await ctx.db
+        .query("channelMembers")
+        .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
+        .collect();
+      const memberUserIds = new Set(channelMemberships.map((m) => m.userId.toString()));
+
+      // Look up users by name and validate membership
+      for (const username of usernames) {
+        // Find user by name (case-insensitive)
+        const user = await ctx.db
+          .query("users")
+          .withIndex("by_name", (q) => q.eq("name", username))
+          .first();
+
+        if (user && memberUserIds.has(user._id.toString())) {
+          validMentions.push(user._id);
+        }
+      }
+    }
+
     // Insert new message using authenticated user
     const messageId = await ctx.db.insert("messages", {
       channelId: args.channelId,
@@ -60,6 +179,8 @@ export const send = withAuthMutation({
       authorName: ctx.user.name,
       body: args.body,
       clientMutationId: args.clientMutationId,
+      mentions: validMentions.length > 0 ? validMentions : undefined,
+      specialMentions: specialMentions.length > 0 ? specialMentions : undefined,
     });
 
     return messageId;
@@ -107,9 +228,22 @@ export const listLatestPerChannel = withAuthQuery({
           .withIndex("by_channel", (q) => q.eq("channelId", channelId))
           .collect();
 
+        // Get the latest message for notification details
+        const latestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+
         return {
           channelId,
           messageCount: messages.length,
+          latestMessage: latestMessage
+            ? {
+                _id: latestMessage._id.toString(),
+                body: latestMessage.body,
+                authorId: latestMessage.userId.toString(),
+                authorName: latestMessage.authorName,
+                mentions: latestMessage.mentions?.map((m) => m.toString()),
+                specialMentions: latestMessage.specialMentions,
+              }
+            : null,
         };
       })
     );

@@ -10,6 +10,7 @@ export default defineSchema({
     isTemp: v.optional(v.boolean()), // True for guest/anonymous users
   })
     .index("by_email", ["email"])
+    .index("by_name", ["name"]) // For @mention lookup
     .index("by_is_temp", ["isTemp"]),
 
   // Auth tokens for magic link authentication
@@ -98,6 +99,12 @@ export default defineSchema({
           users: v.array(v.id("users")),
         })
       )
+    ),
+    // @mentions - array of user IDs mentioned in this message
+    mentions: v.optional(v.array(v.id("users"))),
+    // Special mentions like @channel or @here
+    specialMentions: v.optional(
+      v.array(v.union(v.literal("channel"), v.literal("here")))
     ),
   })
     .index("by_channel", ["channelId"])

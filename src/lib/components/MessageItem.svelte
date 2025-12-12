@@ -1,5 +1,9 @@
 <script lang="ts">
   import { formatRelativeTime, formatFullTimestamp } from "$lib/utils/time";
+  import { tokenize } from "$lib/utils/mentionParser";
+  import MentionSpan from "./MentionSpan.svelte";
+  import SpecialMentionSpan from "./SpecialMentionSpan.svelte";
+  import type { Id } from "../../../convex/_generated/dataModel";
 
   const MAX_RETRIES = 5;
 
@@ -12,22 +16,30 @@
     status?: "pending" | "sending" | "confirmed" | "failed";
     error?: string;
     retryCount?: number;
+    /** Map of username -> userId for resolving mentions */
+    mentionMap?: Record<string, string>;
   }
 
   let {
     message,
     isGrouped = false,
     onRetry,
+    currentUserId = null,
   }: {
     message: Message;
     isGrouped?: boolean;
     onRetry?: (clientMutationId: string) => void;
+    /** Current user's ID for highlighting self-mentions */
+    currentUserId?: Id<"users"> | null;
   } = $props();
 
   const isFailed = $derived(message.status === "failed");
   const isMaxRetriesReached = $derived(
     isFailed && (message.retryCount ?? 0) >= MAX_RETRIES
   );
+
+  // Tokenize message body for mention rendering, passing mentionMap for userId resolution
+  const messageTokens = $derived(tokenize(message.body, message.mentionMap));
 </script>
 
 <div
@@ -47,7 +59,19 @@
   {/if}
 
   <div class="text-sm" class:text-danger={isFailed}>
-    {message.body}
+    {#each messageTokens as token}
+      {#if token.type === "text"}
+        {token.content}
+      {:else if token.type === "mention"}
+        <MentionSpan
+          username={token.username ?? ""}
+          userId={token.userId}
+          {currentUserId}
+        />
+      {:else if token.type === "special-mention" && token.specialType}
+        <SpecialMentionSpan type={token.specialType} />
+      {/if}
+    {/each}
   </div>
 
   {#if isFailed}

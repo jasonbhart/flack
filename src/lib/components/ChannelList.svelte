@@ -35,6 +35,13 @@
     return count > 99 ? "99+" : count.toString();
   }
 
+  // Get mention count with 99+ cap for display
+  function getMentionDisplay(channelId: string): string | null {
+    const count = unreadCounts.getMentionCount(channelId);
+    if (count === 0) return null;
+    return count > 99 ? "99+" : count.toString();
+  }
+
   // Get display name for a channel
   // Shows owner's name prefix if not owned by current user
   function getDisplayName(channel: Channel): string {
@@ -115,12 +122,13 @@
   <nav role="navigation" aria-label="Channel list" class="flex flex-col gap-1">
     {#each channels as channel, index (channel._id)}
       {@const unreadDisplay = getDisplayCount(channel._id)}
+      {@const mentionDisplay = getMentionDisplay(channel._id)}
       {@const displayName = getDisplayName(channel)}
       <button
         data-channel
         onclick={() => onSelect(channel._id)}
         onkeydown={(e) => handleKeydown(e, index)}
-        aria-label="Channel {displayName}{unreadDisplay ? `, ${unreadDisplay} unread messages` : ''}"
+        aria-label="Channel {displayName}{mentionDisplay ? `, ${mentionDisplay} mentions` : ''}{unreadDisplay ? `, ${unreadDisplay} unread messages` : ''}"
         aria-current={channel._id === activeChannelId ? "page" : undefined}
         tabindex={index === focusedIndex ? 0 : -1}
         class="flex items-center justify-between text-left py-1 px-2 rounded text-sm transition-colors
@@ -130,11 +138,20 @@
             : 'text-[var(--text-secondary)] hover:bg-ink-700/50'}"
       >
         <span class="truncate"># {displayName}</span>
-        {#if unreadDisplay}
-          <span class="ml-2 min-w-[1.25rem] h-5 flex items-center justify-center px-1.5 text-xs font-bold bg-volt text-white rounded-full shrink-0">
-            {unreadDisplay}
-          </span>
-        {/if}
+        <span class="flex items-center gap-1 shrink-0">
+          {#if mentionDisplay}
+            <!-- Mention badge: red with @ prefix for high priority -->
+            <span class="ml-2 min-w-[1.25rem] h-5 flex items-center justify-center px-1.5 text-xs font-bold bg-red-500 text-white rounded-full" title="{mentionDisplay} mentions">
+              @{mentionDisplay}
+            </span>
+          {/if}
+          {#if unreadDisplay && !mentionDisplay}
+            <!-- Unread badge: only show if no mentions (mentions are more important) -->
+            <span class="ml-2 min-w-[1.25rem] h-5 flex items-center justify-center px-1.5 text-xs font-bold bg-volt text-white rounded-full">
+              {unreadDisplay}
+            </span>
+          {/if}
+        </span>
       </button>
     {/each}
   </nav>

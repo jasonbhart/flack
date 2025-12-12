@@ -50,4 +50,6 @@ export interface MergedMessage {
   status: MessageStatus;
   error?: string;
   retryCount?: number;
+  /** Map of username -> userId for resolving mentions */
+  mentionMap?: Record<string, string>;
 }
