@@ -798,43 +798,40 @@
   </div>
 {/snippet}
 
-<!-- Mobile Drawer (shown on mobile only) -->
-{#if responsive.isMobile}
+<!-- Mobile Drawer (always rendered, visibility controlled by CSS + JS) -->
+<!-- Using CSS media query for initial render, JS for drawer open/close -->
+<div class="md:hidden">
   <MobileDrawer bind:isOpen={drawerOpen}>
     <div class="flex flex-col h-full">
       {@render sidebarContent()}
     </div>
   </MobileDrawer>
-{/if}
+</div>
 
 <div class="flex min-h-screen flex-col">
-  <!-- Mobile Header (shown on mobile only) -->
-  {#if responsive.isMobile}
-    <header class="fixed top-0 left-0 right-0 z-30 flex items-center gap-3 p-3 bg-[var(--bg-secondary)] border-b border-[var(--border-default)]">
-      <HamburgerButton isOpen={drawerOpen} onclick={() => drawerOpen = !drawerOpen} />
-      <h1 class="text-lg font-bold">Flack</h1>
-      {#if activeChannelId && channelsQuery.data}
-        {@const activeChannel = channelsQuery.data.find(c => c._id === activeChannelId)}
-        {#if activeChannel}
-          <span class="text-[var(--text-secondary)]">#{activeChannel.name}</span>
+  <!-- Mobile Header (CSS media query for visibility, no layout flash) -->
+  <header class="md:hidden fixed top-0 left-0 right-0 z-30 flex items-center gap-3 p-3 bg-[var(--bg-secondary)] border-b border-[var(--border-default)]">
+    <HamburgerButton isOpen={drawerOpen} onclick={() => drawerOpen = !drawerOpen} />
+    <h1 class="text-lg font-bold">Flack</h1>
+    {#if activeChannelId && channelsQuery.data}
+      {@const activeChannel = channelsQuery.data.find(c => c._id === activeChannelId)}
+      {#if activeChannel}
+        <span class="text-[var(--text-secondary)]">#{activeChannel.name}</span>
         {/if}
       {/if}
     </header>
-    <!-- Spacer for fixed header -->
-    <div class="h-14"></div>
-  {/if}
+    <!-- Spacer for fixed header (mobile only) -->
+    <div class="md:hidden h-14"></div>
 
   <div class="flex flex-1">
-    <!-- Desktop Sidebar (hidden on mobile) -->
-    {#if !responsive.isMobile}
-      <aside
-        role="complementary"
-        aria-label="Sidebar"
-        class="w-64 bg-[var(--bg-secondary)] p-4 flex flex-col"
-      >
-        {@render sidebarContent()}
-      </aside>
-    {/if}
+    <!-- Desktop Sidebar (CSS media query: hidden on mobile, visible on md+) -->
+    <aside
+      role="complementary"
+      aria-label="Sidebar"
+      class="hidden md:flex w-64 bg-[var(--bg-secondary)] p-4 flex-col"
+    >
+      {@render sidebarContent()}
+    </aside>
 
     <!-- Main Content -->
     <main
