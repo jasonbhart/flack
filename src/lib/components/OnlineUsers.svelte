@@ -17,6 +17,20 @@
     onlineUsers: OnlineUser[] | undefined;
   } = $props();
 
+  // DEBUG: Track component lifecycle
+  let instanceId = Math.random().toString(36).slice(2, 6);
+  console.log(`[OnlineUsers ${instanceId}] MOUNTED`);
+  $effect(() => {
+    return () => console.log(`[OnlineUsers ${instanceId}] UNMOUNTED`);
+  });
+
+  // DEBUG: Log prop changes
+  $effect(() => {
+    console.log(`[OnlineUsers ${instanceId}] onlineUsers prop:`,
+      onlineUsers === undefined ? 'undefined' :
+      `array(${onlineUsers.length})`);
+  });
+
   // Staleness timer
   let now = $state(Date.now());
   $effect(() => {
@@ -46,8 +60,16 @@
     // [] = confirmed empty, update to empty
     // [...] = users, update to users
     if (uniqueUsers !== undefined) {
+      console.log(`[OnlineUsers ${instanceId}] updating displayedUsers:`, uniqueUsers.length);
       displayedUsers = uniqueUsers;
+    } else {
+      console.log(`[OnlineUsers ${instanceId}] SKIPPING update (uniqueUsers undefined)`);
     }
+  });
+
+  // DEBUG: Log what we're actually rendering
+  $effect(() => {
+    console.log(`[OnlineUsers ${instanceId}] RENDERING displayedUsers:`, displayedUsers.length);
   });
 </script>
 
