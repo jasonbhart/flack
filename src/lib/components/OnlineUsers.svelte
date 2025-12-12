@@ -14,12 +14,6 @@
 
   let { onlineUsers }: { onlineUsers: OnlineUser[] } = $props();
 
-  // DEBUG: Track component lifecycle
-  $effect(() => {
-    console.log('[OnlineUsers] mounted');
-    return () => console.log('[OnlineUsers] unmounted');
-  });
-
   // Reactive timer to drive staleness updates even when no server data changes
   let now = $state(Date.now());
 
