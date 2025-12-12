@@ -31,6 +31,7 @@
   import InviteModal from "$lib/components/InviteModal.svelte";
   import NotificationPrompt from "$lib/components/NotificationPrompt.svelte";
   import NotificationSettings from "$lib/components/NotificationSettings.svelte";
+  import StorageCapacity from "$lib/components/StorageCapacity.svelte";
   import { notificationService } from "$lib/services/NotificationService.svelte";
   import { systemTrayManager } from "$lib/services/SystemTrayManager.svelte";
   import { responsive } from "$lib/utils/responsive.svelte";
@@ -778,8 +779,11 @@
 
     <!-- Collapsible Settings Panel -->
     {#if settingsOpen}
-      <div class="mt-2 p-3 bg-[var(--bg-tertiary)] rounded-lg border border-[var(--border-default)]">
+      <div class="mt-2 p-3 bg-[var(--bg-tertiary)] rounded-lg border border-[var(--border-default)] space-y-4">
         <NotificationSettings />
+        <div class="border-t border-[var(--border-default)] pt-3">
+          <StorageCapacity />
+        </div>
       </div>
     {/if}
 
