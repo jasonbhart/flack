@@ -11,11 +11,10 @@
   }
 
   const ONLINE_TIMEOUT = 60000; // 60 seconds
+  const EMPTY_STATE_DELAY = 150; // ms to wait before showing empty state
 
-  let { onlineUsers, isStale = false }: {
+  let { onlineUsers }: {
     onlineUsers: OnlineUser[];
-    /** When true (stale data from previous channel), suppress empty state */
-    isStale?: boolean;
   } = $props();
 
   // Reactive timer to drive staleness updates even when no server data changes
@@ -46,13 +45,34 @@
     }
     return Array.from(userMap.values());
   });
+
+  // Debounced empty state - prevents flash during channel transitions
+  // Only show "No one else is online" after data has settled for EMPTY_STATE_DELAY ms
+  let showEmptyState = $state(false);
+
+  $effect(() => {
+    const isEmpty = uniqueUsers.length === 0;
+
+    if (!isEmpty) {
+      // Users exist - show them immediately, hide empty state
+      showEmptyState = false;
+      return;
+    }
+
+    // Empty - delay showing empty state to avoid flash during channel switch
+    const timer = setTimeout(() => {
+      showEmptyState = true;
+    }, EMPTY_STATE_DELAY);
+
+    return () => clearTimeout(timer);
+  });
 </script>
 
 <div class="py-2">
   <div class="text-xs text-ink-400 uppercase mb-2">Online</div>
 
-  {#if uniqueUsers.length === 0 && !isStale}
-    <!-- Only show empty state when data is fresh (prevents flash during channel switch) -->
+  {#if showEmptyState}
+    <!-- Debounced empty state - only shown after 150ms of no users -->
     <EmptyState variant="users" />
   {:else if uniqueUsers.length > 0}
     <ul class="flex flex-col gap-1" role="list" aria-label="Online users">

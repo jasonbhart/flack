@@ -728,9 +728,9 @@
     <EmptyState variant="channels" />
   {/if}
 
-  <!-- Online Users - keepPreviousData + isStale prevents flicker during channel switch -->
+  <!-- Online Users - debounced empty state prevents flicker during channel switch -->
   {#if activeChannelId}
-    <OnlineUsers onlineUsers={onlineUsersQuery.data ?? []} isStale={onlineUsersQuery.isStale} />
+    <OnlineUsers onlineUsers={onlineUsersQuery.data ?? []} />
   {/if}
 
   <!-- Spacer -->
