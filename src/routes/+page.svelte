@@ -477,11 +477,14 @@
   async function handleSend(body: string) {
     if (!activeChannelId) return;
 
+    // Capture channel ID to prevent race condition if user switches channels during async enqueue
+    const channelId = activeChannelId;
+
     const clientMutationId = crypto.randomUUID();
     const authorName = presenceManager.getUserName();
 
     // Record typing for notification suppression
-    notificationService.recordTyping(activeChannelId);
+    notificationService.recordTyping(channelId);
 
     // Show notification prompt after first message (if eligible)
     if (!hasSentFirstMessage && notificationService.shouldShowPrompt()) {
@@ -495,11 +498,14 @@
     // Enqueue message (will be sent automatically if online)
     await messageQueue.enqueue({
       clientMutationId,
-      channelId: activeChannelId,
+      channelId,
       authorName,
       body,
       status: "pending",
     });
+
+    // Mark channel as read after sending - own messages shouldn't trigger unread indicator
+    unreadCounts.markAsRead(channelId);
   }
 
   function handleChannelSelect(channelId: Id<"channels">) {

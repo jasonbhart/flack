@@ -5,6 +5,7 @@
   import UnreadDivider from "./UnreadDivider.svelte";
   import JumpToNewButton from "./JumpToNewButton.svelte";
   import { unreadCounts } from "$lib/stores/unreadCounts.svelte";
+  import { presenceManager } from "$lib/stores/presence.svelte";
   import type { Id } from "../../../convex/_generated/dataModel";
 
   interface Message {
@@ -61,9 +62,13 @@
       const wasNearBottom = isNearBottom;
       isNearBottom = distanceFromBottom < 200;
 
-      // Reset unread count when scrolling back to bottom
+      // When user scrolls back to bottom, mark channel as read and reset unread count
       if (!wasNearBottom && isNearBottom) {
         unreadWhileScrolledUp = 0;
+        // Mark as read when reaching the bottom - dismisses unread divider
+        if (channelId) {
+          unreadCounts.markAsReadIfNewer(channelId, Date.now());
+        }
       }
     }, 100);
   }
@@ -143,18 +148,58 @@
   }
 
   // Calculate divider info (where to show "X new messages" separator)
+  // Filters out current user's pending/sending messages so they don't appear as "unread"
   const dividerInfo = $derived.by(() => {
     if (!channelId) return null;
-    // Convert messages to format expected by getDividerInfo
-    const messagesWithTime = messages
-      .filter((m) => m._creationTime !== undefined)
-      .map((m) => ({ _creationTime: m._creationTime! }));
-    return unreadCounts.getDividerInfo(channelId, messagesWithTime);
+
+    // Get current user's name to filter out their pending messages
+    const currentUserName = presenceManager.getUserName();
+
+    // Build filtered list with original indices tracked
+    // We need to map back to original indices for rendering the divider
+    const filteredWithIndices: { _creationTime: number; originalIndex: number }[] = [];
+
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      // Skip messages without creation time
+      if (m._creationTime === undefined) continue;
+
+      // Skip current user's pending/sending messages (they shouldn't count as unread)
+      const isOwnPendingMessage =
+        m.authorName === currentUserName &&
+        m.status !== undefined &&
+        m.status !== "confirmed";
+
+      if (!isOwnPendingMessage) {
+        filteredWithIndices.push({
+          _creationTime: m._creationTime,
+          originalIndex: i,
+        });
+      }
+    }
+
+    // Get divider info based on filtered messages
+    const result = unreadCounts.getDividerInfo(
+      channelId,
+      filteredWithIndices.map((m) => ({ _creationTime: m._creationTime }))
+    );
+
+    // Map the result's messageIndex back to original message array index
+    if (result && filteredWithIndices[result.messageIndex]) {
+      return {
+        messageIndex: filteredWithIndices[result.messageIndex].originalIndex,
+        unreadCount: result.unreadCount,
+      };
+    }
+
+    return result;
   });
 
   // Track divider visibility using IntersectionObserver
   let localDividerRef: HTMLElement | null = $state(null);
   let observer: IntersectionObserver | null = null;
+  // Track previous visibility to detect when divider exits view
+  let wasDividerVisible = true;
 
   $effect(() => {
     // Cleanup previous observer
@@ -165,10 +210,30 @@
 
     // Setup new observer if we have a divider
     if (localDividerRef && containerRef) {
+      // Reset visibility tracking when divider changes
+      wasDividerVisible = true;
+
       observer = new IntersectionObserver(
         (entries) => {
           for (const entry of entries) {
-            isDividerVisible = entry.isIntersecting;
+            const isVisible = entry.isIntersecting;
+
+            // Detect when divider scrolls out of view toward the top
+            // (user scrolled down past it to view new messages)
+            if (wasDividerVisible && !isVisible) {
+              // Check scroll direction: top < 0 means divider scrolled up (user scrolled down)
+              const scrolledDownPastDivider = entry.boundingClientRect.top < 0;
+
+              if (scrolledDownPastDivider && channelId) {
+                // User has scrolled past the divider (viewed the new messages)
+                // Mark the channel as read to dismiss the divider
+                unreadCounts.markAsReadIfNewer(channelId, Date.now());
+              }
+            }
+
+            // Update visibility state
+            isDividerVisible = isVisible;
+            wasDividerVisible = isVisible;
           }
         },
         {
@@ -180,6 +245,7 @@
     } else {
       // No divider = consider it "visible" (don't show jump button)
       isDividerVisible = true;
+      wasDividerVisible = true;
     }
 
     // Cleanup on unmount

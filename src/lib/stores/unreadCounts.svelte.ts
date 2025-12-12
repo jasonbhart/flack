@@ -1,5 +1,6 @@
 import { browser } from "$app/environment";
 import { calculateDividerInfo } from "$lib/utils/dividerCalculation";
+import { shouldUpdateReadTimestamp } from "$lib/utils/readTimestamp";
 
 const STORAGE_KEY = "flack_last_read_timestamps";
 
@@ -70,6 +71,20 @@ class UnreadCountsStore {
     this.counts[channelId] = 0;
     this.mentionCounts[channelId] = 0;
     this.saveToStorage();
+  }
+
+  /**
+   * Mark a channel as read only if the provided timestamp is newer than the current one.
+   * Prevents race conditions from rapid updates (e.g., scroll events, multiple sources).
+   * Use this when updating read state from scroll position or view events.
+   */
+  markAsReadIfNewer(channelId: string, timestamp: number) {
+    if (shouldUpdateReadTimestamp(this.lastReadTimestamps[channelId], timestamp)) {
+      this.lastReadTimestamps[channelId] = timestamp;
+      this.counts[channelId] = 0;
+      this.mentionCounts[channelId] = 0;
+      this.saveToStorage();
+    }
   }
 
   /**
