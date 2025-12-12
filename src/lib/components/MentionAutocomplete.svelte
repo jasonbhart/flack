@@ -23,7 +23,7 @@
   let selectedIndex = $state(0);
 
   // Filter users by query
-  const filteredUsers = $derived(() => {
+  const filteredUsers = $derived.by(() => {
     const filtered = users.filter((u) => matchesQuery(u.name, query));
     // Limit to 6 results for performance
     return filtered.slice(0, 6);
@@ -38,9 +38,8 @@
 
   // Keep selected index in bounds
   $effect(() => {
-    const list = filteredUsers();
-    if (selectedIndex >= list.length) {
-      selectedIndex = Math.max(0, list.length - 1);
+    if (selectedIndex >= filteredUsers.length) {
+      selectedIndex = Math.max(0, filteredUsers.length - 1);
     }
   });
 
@@ -51,12 +50,10 @@
   export function handleKeydown(e: KeyboardEvent): boolean {
     if (!isOpen) return false;
 
-    const list = filteredUsers();
-
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
-        selectedIndex = Math.min(selectedIndex + 1, list.length - 1);
+        selectedIndex = Math.min(selectedIndex + 1, filteredUsers.length - 1);
         return true;
       case "ArrowUp":
         e.preventDefault();
@@ -65,8 +62,8 @@
       case "Enter":
       case "Tab":
         e.preventDefault();
-        if (list[selectedIndex]) {
-          onSelect(list[selectedIndex]);
+        if (filteredUsers[selectedIndex]) {
+          onSelect(filteredUsers[selectedIndex]);
         }
         return true;
       case "Escape":
@@ -93,7 +90,7 @@
   }
 </script>
 
-{#if isOpen && filteredUsers().length > 0}
+{#if isOpen && filteredUsers.length > 0}
   <div
     role="listbox"
     aria-label="Mention suggestions"
@@ -111,7 +108,7 @@
 
     <!-- User list -->
     <ul class="max-h-48 overflow-y-auto">
-      {#each filteredUsers() as user, index (user.id)}
+      {#each filteredUsers as user, index (user.id)}
         <li
           role="option"
           aria-selected={index === selectedIndex}

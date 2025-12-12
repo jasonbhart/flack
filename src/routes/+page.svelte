@@ -49,35 +49,35 @@
       : "skip"
   );
 
-  // Update auth store when session query resolves
+  // Consolidated auth state machine effect
+  // Handles: session sync, redirect on no token, clear session on invalid token
   $effect(() => {
+    if (!browser) return;
+
+    // authStore.sessionToken states:
+    // - undefined: still loading from storage (don't take action yet)
+    // - null: confirmed no token (redirect to login)
+    // - string: have token, check server validation
+
+    // No token = redirect to login
+    if (authStore.sessionToken === null) {
+      goto("/auth/login");
+      return;
+    }
+
+    // Token exists but server says it's invalid = clear session
+    // (clearing will set sessionToken to null, triggering redirect above on next run)
+    if (authStore.sessionToken && sessionQuery.data === null) {
+      authStore.clearSession();
+      return;
+    }
+
+    // Valid session data = update stores
     if (sessionQuery.data !== undefined) {
       authStore.setUser(sessionQuery.data);
-      // Update presence manager with authenticated user name
       if (sessionQuery.data) {
         presenceManager.setUserName(sessionQuery.data.name);
       }
-    }
-  });
-
-  // Redirect to login if not authenticated
-  $effect(() => {
-    // authStore.sessionToken states:
-    // - undefined: still loading from storage (don't redirect yet)
-    // - null: confirmed no token (redirect to login)
-    // - string: have token, wait for session query
-    if (authStore.sessionToken === null && browser) {
-      goto("/auth/login");
-    }
-  });
-
-  // Handle server rejecting the token (session expired/revoked)
-  $effect(() => {
-    // Token exists locally but server says it's invalid
-    if (authStore.sessionToken && sessionQuery.data === null && browser) {
-      // Clear local token and redirect
-      authStore.clearSession();
-      // Note: the effect above will trigger redirect once token becomes null
     }
   });
 
@@ -564,18 +564,13 @@
   });
 
   // Get current user's role in active channel
-  const currentUserRole = $derived(() => {
-    const channels = channelsQuery.data;
-    if (!channels || !activeChannelId) return null;
-    const channel = channels.find(c => c._id === activeChannelId);
+  const currentUserRole = $derived.by(() => {
+    const channel = channelsQuery.data?.find(c => c._id === activeChannelId);
     return channel?.role ?? null;
   });
 
   // Can current user invite to active channel?
-  const canInvite = $derived(() => {
-    const role = currentUserRole();
-    return role === "owner" || role === "admin";
-  });
+  const canInvite = $derived(currentUserRole === "owner" || currentUserRole === "admin");
 
   // Global keyboard shortcuts
   function handleGlobalKeydown(e: KeyboardEvent) {
@@ -851,7 +846,7 @@
           <h2 class="text-lg font-semibold text-[var(--text-primary)]">
             #{activeChannelName ?? ""}
           </h2>
-          {#if canInvite()}
+          {#if canInvite}
             <button
               onclick={() => inviteModalOpen = true}
               class="flex items-center gap-1.5 px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-volt/10 rounded transition-colors"

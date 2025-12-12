@@ -66,18 +66,9 @@ class UnreadCountsStore {
    * Sets last read timestamp to now and clears unread count and mention count.
    */
   markAsRead(channelId: string) {
-    this.lastReadTimestamps = {
-      ...this.lastReadTimestamps,
-      [channelId]: Date.now()
-    };
-    this.counts = {
-      ...this.counts,
-      [channelId]: 0
-    };
-    this.mentionCounts = {
-      ...this.mentionCounts,
-      [channelId]: 0
-    };
+    this.lastReadTimestamps[channelId] = Date.now();
+    this.counts[channelId] = 0;
+    this.mentionCounts[channelId] = 0;
     this.saveToStorage();
   }
 
@@ -86,11 +77,7 @@ class UnreadCountsStore {
    * Called when new messages arrive for inactive channels.
    */
   incrementUnread(channelId: string, amount: number = 1) {
-    const current = this.counts[channelId] ?? 0;
-    this.counts = {
-      ...this.counts,
-      [channelId]: current + amount
-    };
+    this.counts[channelId] = (this.counts[channelId] ?? 0) + amount;
   }
 
   /**
@@ -98,11 +85,7 @@ class UnreadCountsStore {
    * Called when a message mentions the current user (direct or @channel/@here).
    */
   incrementMentions(channelId: string, amount: number = 1) {
-    const current = this.mentionCounts[channelId] ?? 0;
-    this.mentionCounts = {
-      ...this.mentionCounts,
-      [channelId]: current + amount
-    };
+    this.mentionCounts[channelId] = (this.mentionCounts[channelId] ?? 0) + amount;
   }
 
   /**
@@ -138,19 +121,13 @@ class UnreadCountsStore {
 
     if (!lastRead) {
       // Never read this channel - all messages are "read" (don't show huge badge)
-      this.counts = {
-        ...this.counts,
-        [channelId]: 0
-      };
+      this.counts[channelId] = 0;
       return;
     }
 
     // Count messages newer than last read
     const unreadCount = messageTimestamps.filter(ts => ts > lastRead).length;
-    this.counts = {
-      ...this.counts,
-      [channelId]: unreadCount
-    };
+    this.counts[channelId] = unreadCount;
   }
 
   /**

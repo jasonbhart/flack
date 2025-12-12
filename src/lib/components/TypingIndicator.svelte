@@ -20,6 +20,9 @@
   let now = $state(Date.now());
 
   $effect(() => {
+    // Only run timer when there are typing users to filter
+    if (typingUsers.length === 0) return;
+
     const interval = setInterval(() => {
       now = Date.now();
     }, 1000); // Update every 1 second (typing timeout is 3s, needs faster updates)

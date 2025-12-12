@@ -61,16 +61,20 @@
   }
 
   // Track focused index for roving tabindex pattern
+  // Note: This stays as $state + $effect (not $derived) because focusedIndex
+  // is also modified imperatively by keyboard navigation in handleKeydown
   let focusedIndex = $state(0);
 
-  // Update focused index when active channel changes
+  // Derive initial focused index from active channel
+  const activeChannelIndex = $derived.by(() => {
+    if (!activeChannelId) return 0;
+    const index = channels.findIndex(c => c._id === activeChannelId);
+    return index !== -1 ? index : 0;
+  });
+
+  // Sync focusedIndex when activeChannelId changes
   $effect(() => {
-    if (activeChannelId) {
-      const index = channels.findIndex(c => c._id === activeChannelId);
-      if (index !== -1) {
-        focusedIndex = index;
-      }
-    }
+    focusedIndex = activeChannelIndex;
   });
 
   function handleKeydown(e: KeyboardEvent, index: number) {

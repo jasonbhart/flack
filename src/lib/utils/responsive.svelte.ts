@@ -1,5 +1,4 @@
 import { browser } from "$app/environment";
-import { onDestroy } from "svelte";
 
 /**
  * Responsive utility store for breakpoint detection and platform info
@@ -43,48 +42,39 @@ const isDesktop = $derived(viewportWidth >= DESKTOP_BREAKPOINT);
 const isTauri = browser && typeof (window as any).__TAURI__ !== "undefined";
 const isMacOS = browser && navigator.userAgent.includes("Mac");
 
-// Debounced resize handler
-let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
+// Store cleanup functions
+let cleanupFunctions: (() => void)[] = [];
 
-function handleResize() {
-  if (resizeTimeout) {
-    clearTimeout(resizeTimeout);
-  }
-  resizeTimeout = setTimeout(() => {
+// Set up breakpoint detection on client
+if (browser) {
+  // Use matchMedia for instant breakpoint detection (synced with CSS)
+  const mobileQuery = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+  const tabletQuery = window.matchMedia(`(min-width: ${MOBILE_BREAKPOINT}px) and (max-width: ${DESKTOP_BREAKPOINT - 1}px)`);
+
+  const updateFromMedia = () => {
     viewportWidth = window.innerWidth;
-  }, 100); // 100ms debounce
-}
+  };
 
-// Cleanup function for resize listener
-let cleanupRegistered = false;
+  // matchMedia fires immediately when breakpoint is crossed (0ms latency)
+  mobileQuery.addEventListener("change", updateFromMedia);
+  tabletQuery.addEventListener("change", updateFromMedia);
 
-function ensureCleanup() {
-  if (!browser || cleanupRegistered) return;
-  cleanupRegistered = true;
+  // Also listen to resize for accurate width (matchMedia only fires on breakpoint cross)
+  window.addEventListener("resize", updateFromMedia, { passive: true });
 
-  // Register cleanup - will be called when app unmounts
-  // Note: For SPA this rarely fires, but handles HMR correctly
-  if (typeof window !== "undefined") {
-    window.addEventListener("beforeunload", cleanup);
-  }
+  // Store all cleanup functions
+  cleanupFunctions = [
+    () => mobileQuery.removeEventListener("change", updateFromMedia),
+    () => tabletQuery.removeEventListener("change", updateFromMedia),
+    () => window.removeEventListener("resize", updateFromMedia),
+  ];
+
+  isHydrated = true;
 }
 
 function cleanup() {
-  if (browser) {
-    window.removeEventListener("resize", handleResize);
-    window.removeEventListener("beforeunload", cleanup);
-    if (resizeTimeout) {
-      clearTimeout(resizeTimeout);
-      resizeTimeout = null;
-    }
-  }
-}
-
-// Set up resize listener on client
-if (browser) {
-  window.addEventListener("resize", handleResize, { passive: true });
-  ensureCleanup();
-  isHydrated = true;
+  cleanupFunctions.forEach(fn => fn());
+  cleanupFunctions = [];
 }
 
 /**

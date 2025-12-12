@@ -1,14 +1,15 @@
 <script lang="ts">
   let { isOnline }: { isOnline: boolean } = $props();
 
-  // Track previous online state to announce reconnection
-  let wasOffline = $state(false);
+  // Track if we've ever been offline this session
+  let everWentOffline = $state(false);
 
   $effect(() => {
-    if (!isOnline) {
-      wasOffline = true;
-    }
+    if (!isOnline) everWentOffline = true;
   });
+
+  // Show "back online" message when reconnected after being offline
+  const showReconnected = $derived(isOnline && everWentOffline);
 </script>
 
 <!-- Live region for offline/online status announcements -->
@@ -20,7 +21,7 @@
 >
   {#if !isOnline}
     You are offline. Messages will be sent when you reconnect.
-  {:else if wasOffline}
+  {:else if showReconnected}
     You are back online.
   {/if}
 </div>

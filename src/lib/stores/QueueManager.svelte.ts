@@ -53,8 +53,7 @@ class MessageQueue {
 
   private sendMutation: SendMutationFn | null = null;
   private sessionTokenGetter: SessionTokenGetter | null = null;
-  private onlineHandler: (() => void) | null = null;
-  private offlineHandler: (() => void) | null = null;
+  private cleanupNetworkListeners: (() => void) | null = null;
   private initPromise: Promise<void>;
   /** Promise chain for race-safe persistence */
   private persistChain: Promise<void> = Promise.resolve();
@@ -92,24 +91,35 @@ class MessageQueue {
   constructor() {
     if (typeof window !== "undefined") {
       this.isOnline = navigator.onLine;
-
-      // Listen for online/offline events
-      this.onlineHandler = () => {
-        this.isOnline = true;
-        this.flush();
-      };
-      this.offlineHandler = () => {
-        this.isOnline = false;
-      };
-
-      window.addEventListener("online", this.onlineHandler);
-      window.addEventListener("offline", this.offlineHandler);
+      this.setupNetworkListeners();
 
       // Check IndexedDB availability and restore queue
       this.initPromise = this.init();
     } else {
       this.initPromise = Promise.resolve();
     }
+  }
+
+  /**
+   * Set up network status listeners with centralized cleanup
+   */
+  private setupNetworkListeners(): void {
+    const handleOnline = () => {
+      this.isOnline = true;
+      this.flush();
+    };
+    const handleOffline = () => {
+      this.isOnline = false;
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    // Store single cleanup function
+    this.cleanupNetworkListeners = () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
   }
 
   /**
@@ -128,14 +138,7 @@ class MessageQueue {
 
   // Cleanup method for removing event listeners
   destroy() {
-    if (typeof window !== "undefined") {
-      if (this.onlineHandler) {
-        window.removeEventListener("online", this.onlineHandler);
-      }
-      if (this.offlineHandler) {
-        window.removeEventListener("offline", this.offlineHandler);
-      }
-    }
+    this.cleanupNetworkListeners?.();
   }
 
   setSendMutation(fn: SendMutationFn, sessionTokenGetter: SessionTokenGetter) {

@@ -30,7 +30,7 @@
   }
 
   let showTooltip = $state(false);
-  let tooltipTimeout: ReturnType<typeof setTimeout> | null = null;
+  let tooltipTimeout = $state<ReturnType<typeof setTimeout> | null>(null);
 
   function handleMouseEnter() {
     tooltipTimeout = setTimeout(() => {
@@ -45,6 +45,13 @@
     }
     showTooltip = false;
   }
+
+  // Cleanup tooltip timeout on component unmount
+  $effect(() => {
+    return () => {
+      if (tooltipTimeout) clearTimeout(tooltipTimeout);
+    };
+  });
 </script>
 
 <span
