@@ -153,24 +153,18 @@ export const send = withAuthMutation({
     const { usernames, specialMentions } = parseMentions(args.body);
 
     // Resolve usernames to user IDs and validate channel membership
+    // Only check membership for mentioned users (O(mentions) not O(members))
     const validMentions: Id<"users">[] = [];
     if (usernames.length > 0) {
-      // Get all channel members for validation
-      const channelMemberships = await ctx.db
-        .query("channelMembers")
-        .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
-        .collect();
-      const memberUserIds = new Set(channelMemberships.map((m) => m.userId.toString()));
-
-      // Look up users by name and validate membership
       for (const username of usernames) {
-        // Find user by name (case-insensitive)
+        // Find user by name
         const user = await ctx.db
           .query("users")
           .withIndex("by_name", (q) => q.eq("name", username))
           .first();
 
-        if (user && memberUserIds.has(user._id.toString())) {
+        // Validate membership individually using efficient composite index
+        if (user && (await checkMembership(ctx, args.channelId, user._id))) {
           validMentions.push(user._id);
         }
       }
