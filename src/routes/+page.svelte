@@ -724,9 +724,13 @@
     <EmptyState variant="channels" />
   {/if}
 
-  <!-- Online Users - component handles channel transition debouncing internally -->
+  <!-- Online Users - only updates when query completes (not during loading) -->
   {#if activeChannelId}
-    <OnlineUsers onlineUsers={onlineUsersQuery.data ?? []} channelId={activeChannelId} />
+    <OnlineUsers
+      onlineUsers={onlineUsersQuery.data ?? []}
+      channelId={activeChannelId}
+      isLoading={onlineUsersQuery.isLoading}
+    />
   {/if}
 
   <!-- Spacer -->

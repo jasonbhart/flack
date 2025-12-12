@@ -11,15 +11,15 @@
   }
 
   const ONLINE_TIMEOUT = 60000; // 60 seconds
-  const SETTLE_DELAY = 100; // ms to wait before updating displayed users
 
-  let { onlineUsers, channelId }: {
+  let { onlineUsers, channelId, isLoading }: {
     onlineUsers: OnlineUser[];
-    /** Current channel ID - used to track channel switches */
     channelId: string;
+    /** True while query is fetching - suppress updates during loading */
+    isLoading: boolean;
   } = $props();
 
-  // Reactive timer to drive staleness updates even when no server data changes
+  // Reactive timer to drive staleness updates
   let now = $state(Date.now());
 
   $effect(() => {
@@ -46,32 +46,24 @@
     return Array.from(userMap.values());
   });
 
-  // Stable display state - debounced to prevent flicker during channel transitions
-  // Shows nothing during transitions, then settles to actual state
-  let displayedUsers = $state<OnlineUser[]>([]);
-  let showEmptyState = $state(false);
-  let lastChannelId = $state(channelId);
+  // Snapshot state - only update when data is ready (not loading)
+  let snapshot = $state<{ users: OnlineUser[]; channelId: string }>({
+    users: [],
+    channelId
+  });
 
   $effect(() => {
-    const currentChannel = channelId;
-    const users = uniqueUsers;
-    const isChannelSwitch = currentChannel !== lastChannelId;
-
-    if (isChannelSwitch) {
-      // Channel changed - clear display immediately to avoid showing wrong channel's users
-      displayedUsers = [];
-      showEmptyState = false;
-      lastChannelId = currentChannel;
+    // Only update snapshot when:
+    // 1. Not loading (query has returned)
+    // 2. Data is for current channel (channelId matches)
+    if (!isLoading) {
+      snapshot = { users: uniqueUsers, channelId };
     }
-
-    // Debounce updates to let data settle
-    const timer = setTimeout(() => {
-      displayedUsers = users;
-      showEmptyState = users.length === 0;
-    }, isChannelSwitch ? SETTLE_DELAY : 0);
-
-    return () => clearTimeout(timer);
   });
+
+  // Display the snapshot - stable during transitions
+  const displayedUsers = $derived(snapshot.users);
+  const showEmptyState = $derived(snapshot.channelId === channelId && displayedUsers.length === 0 && !isLoading);
 </script>
 
 <div class="py-2">
