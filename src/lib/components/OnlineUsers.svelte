@@ -12,7 +12,14 @@
 
   const ONLINE_TIMEOUT = 60000; // 60 seconds
 
-  let { onlineUsers }: { onlineUsers: OnlineUser[] } = $props();
+  let {
+    onlineUsers,
+    isLoading = false,
+  }: {
+    onlineUsers: OnlineUser[];
+    /** Show loading state (keeps component mounted during channel switch) */
+    isLoading?: boolean;
+  } = $props();
 
   // Reactive timer to drive staleness updates even when no server data changes
   let now = $state(Date.now());
@@ -47,7 +54,19 @@
 <div class="py-2">
   <div class="text-xs text-ink-400 uppercase mb-2">Online</div>
 
-  {#if uniqueUsers.length === 0}
+  {#if isLoading && uniqueUsers.length === 0}
+    <!-- Loading skeleton - only show when no cached data -->
+    <div class="flex flex-col gap-1 animate-pulse">
+      <div class="flex items-center gap-2">
+        <div class="w-2 h-2 rounded-full bg-[var(--bg-tertiary)]"></div>
+        <div class="h-4 w-20 bg-[var(--bg-tertiary)] rounded"></div>
+      </div>
+      <div class="flex items-center gap-2">
+        <div class="w-2 h-2 rounded-full bg-[var(--bg-tertiary)]"></div>
+        <div class="h-4 w-16 bg-[var(--bg-tertiary)] rounded"></div>
+      </div>
+    </div>
+  {:else if uniqueUsers.length === 0}
     <EmptyState variant="users" />
   {:else}
     <ul class="flex flex-col gap-1" role="list" aria-label="Online users">
