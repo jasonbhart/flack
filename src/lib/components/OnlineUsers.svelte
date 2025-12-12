@@ -53,6 +53,9 @@
   });
 
   $effect(() => {
+    // DEBUG: Log state changes
+    console.log('[OnlineUsers]', { isLoading, channelId, userCount: uniqueUsers.length });
+
     // Only update snapshot when:
     // 1. Not loading (query has returned)
     // 2. Data is for current channel (channelId matches)
