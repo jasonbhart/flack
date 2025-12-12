@@ -12,20 +12,21 @@
   }
 
   const ONLINE_TIMEOUT = 60000; // 60 seconds
+  const EMPTY_DELAY = 200; // ms before showing empty state
 
   let { onlineUsers, channelId }: {
     onlineUsers: OnlineUser[];
     channelId: string;
   } = $props();
 
-  // Staleness timer - runs independently, doesn't trigger on data changes
+  // Staleness timer
   let now = $state(Date.now());
   $effect(() => {
     const interval = setInterval(() => { now = Date.now(); }, 5000);
     return () => clearInterval(interval);
   });
 
-  // Derived: filter stale and deduplicate
+  // Filter stale and deduplicate
   const uniqueUsers = $derived.by(() => {
     const userMap = new Map<string, OnlineUser>();
     for (const user of onlineUsers) {
@@ -38,60 +39,57 @@
     return Array.from(userMap.values());
   });
 
-  // Track last confirmed channel to detect switches
-  let confirmedChannelId = $state(channelId);
+  // Simple approach: only update when we have something to show
+  let displayedUsers = $state<OnlineUser[]>([]);
+  let lastChannelWithUsers = $state<string | null>(null);
+  let showEmpty = $state(false);
 
-  // Display state - only updates on confirmed data
-  let displayState = $state<{ users: OnlineUser[]; isEmpty: boolean }>({
-    users: [],
-    isEmpty: false
-  });
-
-  // When channelId changes, mark as unconfirmed (don't update display yet)
-  $effect.pre(() => {
-    channelId; // track
-    // Reset confirmation when channel changes
-    untrack(() => {
-      if (channelId !== confirmedChannelId) {
-        confirmedChannelId = channelId;
-        // Clear users immediately on switch, but don't show empty yet
-        displayState = { users: [], isEmpty: false };
-      }
-    });
-  });
-
-  // When we have users, update immediately. Empty state only after users settle.
   $effect(() => {
     const users = uniqueUsers;
-    const currentChannel = channelId;
+    const channel = channelId;
 
+    // If we have users, always show them immediately
     if (users.length > 0) {
-      // Users exist - update display immediately
-      displayState = { users, isEmpty: false };
-    } else if (untrack(() => displayState.users.length > 0)) {
-      // Had users, now empty - likely channel switch, wait for real data
-      // Keep showing nothing (already cleared by $effect.pre)
-    } else {
-      // No users and display is empty - schedule empty state
+      displayedUsers = users;
+      lastChannelWithUsers = channel;
+      showEmpty = false;
+      return;
+    }
+
+    // No users - only show empty if this is definitely the current channel's state
+    // (not stale data from a previous channel)
+    const isCurrentChannel = lastChannelWithUsers === channel || lastChannelWithUsers === null;
+
+    if (isCurrentChannel && untrack(() => displayedUsers.length === 0)) {
+      // Already showing nothing, schedule empty state
       const timer = setTimeout(() => {
-        // Verify still on same channel and still empty
-        if (untrack(() => channelId === currentChannel && uniqueUsers.length === 0)) {
-          displayState = { users: [], isEmpty: true };
+        if (untrack(() => uniqueUsers.length === 0 && channelId === channel)) {
+          showEmpty = true;
         }
-      }, 150);
+      }, EMPTY_DELAY);
       return () => clearTimeout(timer);
     }
+
+    // Have users displayed from previous state - keep showing them briefly
+    // until new channel's users arrive (or empty state timer fires)
+    const timer = setTimeout(() => {
+      if (untrack(() => uniqueUsers.length === 0 && channelId === channel)) {
+        displayedUsers = [];
+        showEmpty = true;
+      }
+    }, EMPTY_DELAY);
+    return () => clearTimeout(timer);
   });
 </script>
 
 <div class="py-2">
   <div class="text-xs text-ink-400 uppercase mb-2">Online</div>
 
-  {#if displayState.isEmpty}
+  {#if showEmpty}
     <EmptyState variant="users" />
-  {:else if displayState.users.length > 0}
+  {:else if displayedUsers.length > 0}
     <ul class="flex flex-col gap-1" role="list" aria-label="Online users">
-      {#each displayState.users as user (user.userId)}
+      {#each displayedUsers as user (user.userId)}
         <li class="flex items-center gap-2 text-sm">
           <PresenceIndicator isOnline={true} />
           <span>{user.displayName}</span>
