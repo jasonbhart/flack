@@ -11,25 +11,12 @@
   }
 
   const ONLINE_TIMEOUT = 60000; // 60 seconds
+  const EMPTY_DEBOUNCE_MS = 150; // Wait before showing empty state
 
   let { onlineUsers }: {
     /** undefined = loading/transitioning, [] = confirmed empty, [...] = users */
     onlineUsers: OnlineUser[] | undefined;
   } = $props();
-
-  // DEBUG: Track component lifecycle
-  let instanceId = Math.random().toString(36).slice(2, 6);
-  console.log(`[OnlineUsers ${instanceId}] MOUNTED`);
-  $effect(() => {
-    return () => console.log(`[OnlineUsers ${instanceId}] UNMOUNTED`);
-  });
-
-  // DEBUG: Log prop changes
-  $effect(() => {
-    console.log(`[OnlineUsers ${instanceId}] onlineUsers prop:`,
-      onlineUsers === undefined ? 'undefined' :
-      `array(${onlineUsers.length})`);
-  });
 
   // Staleness timer
   let now = $state(Date.now());
@@ -52,24 +39,40 @@
     return Array.from(userMap.values());
   });
 
-  // Display state - only update when we have definitive data
+  // Display state with debounced empty handling
   let displayedUsers = $state<OnlineUser[]>([]);
+  let emptyDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   $effect(() => {
-    // undefined = loading, don't update display
-    // [] = confirmed empty, update to empty
-    // [...] = users, update to users
-    if (uniqueUsers !== undefined) {
-      console.log(`[OnlineUsers ${instanceId}] updating displayedUsers:`, uniqueUsers.length);
-      displayedUsers = uniqueUsers;
-    } else {
-      console.log(`[OnlineUsers ${instanceId}] SKIPPING update (uniqueUsers undefined)`);
+    // Cleanup timer on effect re-run
+    if (emptyDebounceTimer) {
+      clearTimeout(emptyDebounceTimer);
+      emptyDebounceTimer = null;
     }
-  });
 
-  // DEBUG: Log what we're actually rendering
-  $effect(() => {
-    console.log(`[OnlineUsers ${instanceId}] RENDERING displayedUsers:`, displayedUsers.length);
+    if (uniqueUsers === undefined) {
+      // Loading - keep showing previous data
+      return;
+    }
+
+    if (uniqueUsers.length > 0) {
+      // Have users - update immediately
+      displayedUsers = uniqueUsers;
+      return;
+    }
+
+    // Empty array - debounce before showing empty state
+    // This handles the Convex pattern of: undefined → [] → [actual data]
+    emptyDebounceTimer = setTimeout(() => {
+      displayedUsers = [];
+    }, EMPTY_DEBOUNCE_MS);
+
+    return () => {
+      if (emptyDebounceTimer) {
+        clearTimeout(emptyDebounceTimer);
+        emptyDebounceTimer = null;
+      }
+    };
   });
 </script>
 
