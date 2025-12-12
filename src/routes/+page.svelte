@@ -640,7 +640,7 @@
 {:else if authStore.sessionToken === null}
   <!-- No token - redirecting to login -->
   <div class="min-h-screen bg-[var(--bg-primary)]"></div>
-{:else if sessionQuery.data === undefined}
+{:else if sessionQuery.isLoading}
   <!-- Have token, validating session -->
   <div class="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
     <div class="flex flex-col items-center gap-3">

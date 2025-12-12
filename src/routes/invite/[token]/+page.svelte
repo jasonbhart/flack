@@ -56,7 +56,7 @@
   // Handle unauthenticated flow
   $effect(() => {
     // Wait for session query to resolve
-    if (sessionQuery.data === undefined) return;
+    if (sessionQuery.isLoading) return;
 
     if (sessionQuery.data === null) {
       // Not authenticated - store token and redirect to login
