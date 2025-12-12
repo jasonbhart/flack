@@ -12,7 +12,11 @@
 
   const ONLINE_TIMEOUT = 60000; // 60 seconds
 
-  let { onlineUsers }: { onlineUsers: OnlineUser[] } = $props();
+  let { onlineUsers, isLoading = false }: {
+    onlineUsers: OnlineUser[];
+    /** When true, suppress empty state during channel transitions */
+    isLoading?: boolean;
+  } = $props();
 
   // Reactive timer to drive staleness updates even when no server data changes
   let now = $state(Date.now());
@@ -47,10 +51,10 @@
 <div class="py-2">
   <div class="text-xs text-ink-400 uppercase mb-2">Online</div>
 
-  {#if uniqueUsers.length === 0}
-    <!-- No users online - keepPreviousData handles transition, so no skeleton needed -->
+  {#if uniqueUsers.length === 0 && !isLoading}
+    <!-- Only show empty state when NOT loading (prevents flash during channel switch) -->
     <EmptyState variant="users" />
-  {:else}
+  {:else if uniqueUsers.length > 0}
     <ul class="flex flex-col gap-1" role="list" aria-label="Online users">
       {#each uniqueUsers as user (user.userId)}
         <li class="flex items-center gap-2 text-sm">
