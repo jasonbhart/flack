@@ -724,9 +724,9 @@
     <EmptyState variant="channels" />
   {/if}
 
-  <!-- Online Users - uses $effect.pre + untrack for stable channel transitions -->
+  <!-- Online Users - undefined=loading (no update), []=empty, [...]= users -->
   {#if activeChannelId}
-    <OnlineUsers onlineUsers={onlineUsersQuery.data ?? []} channelId={activeChannelId} />
+    <OnlineUsers onlineUsers={onlineUsersQuery.data} />
   {/if}
 
   <!-- Spacer -->
