@@ -724,13 +724,9 @@
     <EmptyState variant="channels" />
   {/if}
 
-  <!-- Online Users - only updates when query completes (not during loading) -->
+  <!-- Online Users - uses $effect.pre + untrack for stable channel transitions -->
   {#if activeChannelId}
-    <OnlineUsers
-      onlineUsers={onlineUsersQuery.data ?? []}
-      channelId={activeChannelId}
-      isLoading={onlineUsersQuery.isLoading}
-    />
+    <OnlineUsers onlineUsers={onlineUsersQuery.data ?? []} channelId={activeChannelId} />
   {/if}
 
   <!-- Spacer -->
