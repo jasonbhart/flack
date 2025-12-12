@@ -43,10 +43,22 @@
   let displayedUsers = $state<OnlineUser[]>([]);
 
   $effect(() => {
+    // DEBUG: Log all state changes
+    console.log('OnlineUsers state:', {
+      isLoading,
+      onlineUsersLength: onlineUsers?.length ?? 'undefined',
+      uniqueUsersLength: uniqueUsers.length,
+      displayedUsersLength: displayedUsers.length
+    });
+
     // When loading, keep showing previous data to prevent flash
-    if (isLoading) return;
+    if (isLoading) {
+      console.log('  -> SKIPPING update (isLoading=true)');
+      return;
+    }
 
     // Not loading - safe to update display
+    console.log('  -> UPDATING displayedUsers to', uniqueUsers.length);
     displayedUsers = uniqueUsers;
   });
 </script>
