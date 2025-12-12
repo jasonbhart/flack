@@ -84,15 +84,15 @@ describe("NotificationService Logic", () => {
 
   describe("typing suppression logic", () => {
     it("should suppress notifications when user recently typed", () => {
-      const lastTypingTimestamp = Date.now() - 15000; // 15 seconds ago
-      const suppressionWindow = 30000; // 30 seconds
+      const lastTypingTimestamp = Date.now() - 1000; // 1 second ago
+      const suppressionWindow = 3000; // 3 seconds
       const shouldSuppress = Date.now() - lastTypingTimestamp < suppressionWindow;
       expect(shouldSuppress).toBe(true);
     });
 
     it("should not suppress when user has not typed recently", () => {
-      const lastTypingTimestamp = Date.now() - 45000; // 45 seconds ago
-      const suppressionWindow = 30000; // 30 seconds
+      const lastTypingTimestamp = Date.now() - 5000; // 5 seconds ago
+      const suppressionWindow = 3000; // 3 seconds
       const shouldSuppress = Date.now() - lastTypingTimestamp < suppressionWindow;
       expect(shouldSuppress).toBe(false);
     });

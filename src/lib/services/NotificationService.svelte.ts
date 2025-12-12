@@ -347,9 +347,11 @@ class NotificationService {
       return false;
     }
 
-    // Don't notify if user typed in channel recently (30 seconds)
+    // Don't notify if user typed in channel recently (3 seconds)
+    // Short timeout: covers "user is actively typing" case
+    // Focus check (above) handles "user is looking at screen" case
     const lastTyping = this.lastTypingTimestamps[channelId];
-    if (lastTyping && Date.now() - lastTyping < 30000) {
+    if (lastTyping && Date.now() - lastTyping < 3000) {
       return false;
     }
 

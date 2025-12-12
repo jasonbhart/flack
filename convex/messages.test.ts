@@ -167,6 +167,219 @@ describe("messages", () => {
     });
   });
 
+  describe("mentions", () => {
+    it("resolves valid @mentions to user IDs", async () => {
+      const t = convexTest(schema, modules);
+      const { userId: aliceId, sessionToken: aliceToken } = await createAuthenticatedUser(
+        t,
+        "Alice",
+        "alice@example.com"
+      );
+      const { userId: bobId, sessionToken: bobToken } = await createAuthenticatedUser(
+        t,
+        "Bob",
+        "bob@example.com"
+      );
+
+      // Alice creates channel and invites Bob
+      const { channelId } = await t.mutation(api.channels.create, {
+        sessionToken: aliceToken,
+        name: "mentions-test",
+      });
+
+      // Add Bob as member
+      const { token: inviteToken } = await t.mutation(api.channelInvites.create, {
+        sessionToken: aliceToken,
+        channelId,
+      });
+      await t.mutation(api.channelInvites.redeem, {
+        sessionToken: bobToken,
+        token: inviteToken,
+      });
+
+      // Alice sends message mentioning Bob
+      const messageId = await t.mutation(api.messages.send, {
+        sessionToken: aliceToken,
+        channelId,
+        body: "Hey @Bob check this out!",
+        clientMutationId: "mention-test-1",
+      });
+
+      // Verify mention was resolved
+      const message = await t.run(async (ctx) => {
+        return await ctx.db.get(messageId);
+      });
+
+      expect(message?.mentions).toBeDefined();
+      expect(message?.mentions).toContain(bobId);
+    });
+
+    it("ignores @mentions for non-members", async () => {
+      const t = convexTest(schema, modules);
+      const { sessionToken: aliceToken } = await createAuthenticatedUser(
+        t,
+        "Alice",
+        "alice@example.com"
+      );
+      // Create outsider (not a member)
+      await createAuthenticatedUser(t, "Charlie", "charlie@example.com");
+
+      const { channelId } = await t.mutation(api.channels.create, {
+        sessionToken: aliceToken,
+        name: "mentions-test-2",
+      });
+
+      // Alice mentions Charlie who is not a member
+      const messageId = await t.mutation(api.messages.send, {
+        sessionToken: aliceToken,
+        channelId,
+        body: "Hey @Charlie are you there?",
+        clientMutationId: "mention-test-2",
+      });
+
+      const message = await t.run(async (ctx) => {
+        return await ctx.db.get(messageId);
+      });
+
+      // Charlie should NOT be in mentions (not a member)
+      // mentions is undefined when no valid mentions, or empty array
+      expect(message?.mentions ?? []).toEqual([]);
+    });
+
+    it("stores @channel and @here as specialMentions", async () => {
+      const t = convexTest(schema, modules);
+      const { sessionToken } = await createAuthenticatedUser(
+        t,
+        "Alice",
+        "alice@example.com"
+      );
+
+      const { channelId } = await t.mutation(api.channels.create, {
+        sessionToken,
+        name: "special-mentions-test",
+      });
+
+      // Send message with @channel
+      const messageId1 = await t.mutation(api.messages.send, {
+        sessionToken,
+        channelId,
+        body: "@channel important announcement!",
+        clientMutationId: "special-1",
+      });
+
+      const message1 = await t.run(async (ctx) => {
+        return await ctx.db.get(messageId1);
+      });
+
+      expect(message1?.specialMentions).toContain("channel");
+
+      // Send message with @here
+      const messageId2 = await t.mutation(api.messages.send, {
+        sessionToken,
+        channelId,
+        body: "@here anyone online?",
+        clientMutationId: "special-2",
+      });
+
+      const message2 = await t.run(async (ctx) => {
+        return await ctx.db.get(messageId2);
+      });
+
+      expect(message2?.specialMentions).toContain("here");
+    });
+
+    it("handles mixed mentions correctly", async () => {
+      const t = convexTest(schema, modules);
+      const { sessionToken: aliceToken } = await createAuthenticatedUser(
+        t,
+        "Alice",
+        "alice@example.com"
+      );
+      const { userId: bobId, sessionToken: bobToken } = await createAuthenticatedUser(
+        t,
+        "Bob",
+        "bob@example.com"
+      );
+
+      const { channelId } = await t.mutation(api.channels.create, {
+        sessionToken: aliceToken,
+        name: "mixed-mentions-test",
+      });
+
+      // Add Bob as member
+      const { token: inviteToken } = await t.mutation(api.channelInvites.create, {
+        sessionToken: aliceToken,
+        channelId,
+      });
+      await t.mutation(api.channelInvites.redeem, {
+        sessionToken: bobToken,
+        token: inviteToken,
+      });
+
+      // Message with both user mention and special mention
+      const messageId = await t.mutation(api.messages.send, {
+        sessionToken: aliceToken,
+        channelId,
+        body: "@channel @Bob please review this",
+        clientMutationId: "mixed-1",
+      });
+
+      const message = await t.run(async (ctx) => {
+        return await ctx.db.get(messageId);
+      });
+
+      expect(message?.mentions).toContain(bobId);
+      expect(message?.specialMentions).toContain("channel");
+    });
+
+    it("returns mentionMap in list query", async () => {
+      const t = convexTest(schema, modules);
+      const { sessionToken: aliceToken } = await createAuthenticatedUser(
+        t,
+        "Alice",
+        "alice@example.com"
+      );
+      const { sessionToken: bobToken } = await createAuthenticatedUser(
+        t,
+        "Bob",
+        "bob@example.com"
+      );
+
+      const { channelId } = await t.mutation(api.channels.create, {
+        sessionToken: aliceToken,
+        name: "mentionmap-test",
+      });
+
+      // Add Bob as member
+      const { token: inviteToken } = await t.mutation(api.channelInvites.create, {
+        sessionToken: aliceToken,
+        channelId,
+      });
+      await t.mutation(api.channelInvites.redeem, {
+        sessionToken: bobToken,
+        token: inviteToken,
+      });
+
+      // Send message mentioning Bob
+      await t.mutation(api.messages.send, {
+        sessionToken: aliceToken,
+        channelId,
+        body: "Hey @Bob!",
+        clientMutationId: "mentionmap-1",
+      });
+
+      // List messages and check mentionMap
+      const messages = await t.query(api.messages.list, {
+        sessionToken: aliceToken,
+        channelId,
+      });
+
+      expect(messages).toHaveLength(1);
+      expect(messages[0].mentionMap).toBeDefined();
+      expect(messages[0].mentionMap?.Bob).toBeDefined();
+    });
+  });
+
   describe("list", () => {
     it("returns messages for channel member", async () => {
       const t = convexTest(schema, modules);

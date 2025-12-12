@@ -65,10 +65,14 @@ export const list = withAuthQuery({
       throw new Error("Unauthorized: Not a member of this channel");
     }
 
-    const messages = await ctx.db
+    // Fetch latest 100 messages (prevents timeout on large channels)
+    // Order desc to get latest, then reverse for chronological display
+    const messagesDesc = await ctx.db
       .query("messages")
       .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
-      .collect();
+      .order("desc")
+      .take(100);
+    const messages = messagesDesc.reverse();
 
     // Build mentionMap for each message (username -> userId)
     // Collect all unique mentioned user IDs across all messages
