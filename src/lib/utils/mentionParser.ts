@@ -49,8 +49,14 @@ export function parse(text: string): ParseResult {
     const startIndex = match.index;
     const endIndex = startIndex + raw.length;
 
-    // Check for escaped @@ (skip if preceded by @)
-    if (startIndex > 0 && text[startIndex - 1] === "@") {
+    // Skip if @ is not at word boundary (e.g., inside email: user@example.com)
+    // Must be at start of string OR preceded by whitespace
+    if (startIndex > 0 && !/\s/.test(text[startIndex - 1])) {
+      // Exception: allow @@ escape sequence (skip the escaped mention)
+      if (text[startIndex - 1] === "@") {
+        continue;
+      }
+      // Not a valid mention boundary (likely part of email or URL)
       continue;
     }
 

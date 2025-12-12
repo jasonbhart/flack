@@ -129,14 +129,10 @@ export const sendMagicLink = mutation({
     const rateLimitResult = await checkMultipleRateLimits(ctx, rateLimitChecks);
 
     if (!rateLimitResult.allowed) {
-      // Return 429-style error with retry info
-      // Don't reveal which limit was hit to prevent enumeration
+      // Human-readable error - don't reveal which limit was hit to prevent enumeration
+      const seconds = rateLimitResult.retryAfterSeconds ?? 60;
       throw new Error(
-        JSON.stringify({
-          code: 429,
-          message: "Too many requests. Please try again later.",
-          retryAfterSeconds: rateLimitResult.retryAfterSeconds,
-        })
+        `Too many requests. Please try again in ${seconds} second${seconds !== 1 ? "s" : ""}.`
       );
     }
 

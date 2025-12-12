@@ -37,8 +37,14 @@ function parseMentions(text: string): {
     const username = match[1];
     const startIndex = match.index;
 
-    // Check for escaped @@ (skip if preceded by @)
-    if (startIndex > 0 && text[startIndex - 1] === "@") {
+    // Skip if @ is not at word boundary (e.g., inside email: user@example.com)
+    // Must be at start of string OR preceded by whitespace
+    if (startIndex > 0 && !/\s/.test(text[startIndex - 1])) {
+      // Exception: allow @@ escape sequence (skip the escaped mention)
+      if (text[startIndex - 1] === "@") {
+        continue;
+      }
+      // Not a valid mention boundary (likely part of email or URL)
       continue;
     }
 
@@ -146,11 +152,7 @@ export const send = withAuthMutation({
     );
     if (!minuteLimit.allowed) {
       throw new Error(
-        JSON.stringify({
-          code: 429,
-          message: "Sending too fast. Please slow down.",
-          retryAfterSeconds: minuteLimit.retryAfterSeconds,
-        })
+        `Sending too fast. Please wait ${minuteLimit.retryAfterSeconds} seconds.`
       );
     }
 
@@ -161,12 +163,9 @@ export const send = withAuthMutation({
       MESSAGE_RATE_LIMITS.perHour
     );
     if (!hourLimit.allowed) {
+      const minutes = Math.ceil((hourLimit.retryAfterSeconds ?? 60) / 60);
       throw new Error(
-        JSON.stringify({
-          code: 429,
-          message: "Message limit reached. Please try again later.",
-          retryAfterSeconds: hourLimit.retryAfterSeconds,
-        })
+        `Message limit reached. Please try again in ${minutes} minute${minutes > 1 ? "s" : ""}.`
       );
     }
 

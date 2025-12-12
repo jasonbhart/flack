@@ -46,11 +46,18 @@ describe("parse", () => {
     expect(result.specialMentions).toHaveLength(2);
   });
 
-  it("ignores escaped @@ mentions but parses subsequent @", () => {
-    // @@john is escaped (ignored), but @example is a valid mention
+  it("ignores escaped @@ mentions", () => {
+    // @@john is escaped (ignored), and @example.com looks like an email (no mention)
     const result = parse("Email me at @@john@example.com");
+    // Neither @john (escaped) nor @example (no word boundary) should be parsed
+    expect(result.mentions).toHaveLength(0);
+  });
+
+  it("parses mention after space even with escaped @@", () => {
+    // @@john is escaped, but @alice after space is valid
+    const result = parse("Use @@john and @alice");
     expect(result.mentions).toHaveLength(1);
-    expect(result.mentions[0].username).toBe("example");
+    expect(result.mentions[0].username).toBe("alice");
   });
 
   it("fully ignores escaped @@ when standalone", () => {
@@ -169,10 +176,22 @@ describe("tokenize", () => {
     expect(tokens).toHaveLength(0);
   });
 
-  it("handles multiple consecutive mentions", () => {
-    const tokens = tokenize("@alice@bob");
-    // @alice@bob - both should be parsed
+  it("handles multiple consecutive mentions with spaces", () => {
+    const tokens = tokenize("@alice @bob");
+    // @alice @bob - both should be parsed (space-separated)
     expect(tokens.filter((t) => t.type === "mention")).toHaveLength(2);
+  });
+
+  it("does not parse mentions without word boundary (like emails)", () => {
+    const tokens = tokenize("user@example.com");
+    // @example should NOT be parsed - it's part of an email
+    expect(tokens.filter((t) => t.type === "mention")).toHaveLength(0);
+    expect(tokens.filter((t) => t.type === "text")).toHaveLength(1);
+  });
+
+  it("parses mention at start of string", () => {
+    const tokens = tokenize("@alice said hello");
+    expect(tokens.filter((t) => t.type === "mention")).toHaveLength(1);
   });
 
   it("sorts tokens by position", () => {
