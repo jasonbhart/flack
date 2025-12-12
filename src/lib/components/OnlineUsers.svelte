@@ -11,12 +11,18 @@
   }
 
   const ONLINE_TIMEOUT = 60000; // 60 seconds
+  const EMPTY_DEBOUNCE_MS = 200; // Debounce empty results
 
-  let { onlineUsers, isLoading = false }: {
+  let { onlineUsers, channelId }: {
     onlineUsers: OnlineUser[] | undefined;
-    /** When true, query is loading - preserve previous display */
-    isLoading?: boolean;
+    /** Current channel - used to detect channel switches */
+    channelId: string;
   } = $props();
+
+  // Track channel changes (non-reactive to avoid infinite loops)
+  let lastChannelId: string | null = null;
+  let displayedUsers = $state<OnlineUser[]>([]);
+  let emptyDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Staleness timer
   let now = $state(Date.now());
@@ -39,27 +45,36 @@
     return Array.from(userMap.values());
   });
 
-  // Display state - only update when NOT loading
-  let displayedUsers = $state<OnlineUser[]>([]);
-
+  // Update display with channel-aware debouncing
   $effect(() => {
-    // DEBUG: Log all state changes
-    console.log('OnlineUsers state:', {
-      isLoading,
-      onlineUsersLength: onlineUsers?.length ?? 'undefined',
-      uniqueUsersLength: uniqueUsers.length,
-      displayedUsersLength: displayedUsers.length
-    });
+    // Clear any pending debounce on every run
+    if (emptyDebounceTimer) {
+      clearTimeout(emptyDebounceTimer);
+      emptyDebounceTimer = null;
+    }
 
-    // When loading, keep showing previous data to prevent flash
-    if (isLoading) {
-      console.log('  -> SKIPPING update (isLoading=true)');
+    const channelChanged = channelId !== lastChannelId;
+    if (channelChanged) {
+      lastChannelId = channelId;
+    }
+
+    // If we have users, show immediately (regardless of channel change)
+    if (uniqueUsers.length > 0) {
+      displayedUsers = uniqueUsers;
       return;
     }
 
-    // Not loading - safe to update display
-    console.log('  -> UPDATING displayedUsers to', uniqueUsers.length);
-    displayedUsers = uniqueUsers;
+    // Empty result - debounce to handle: undefined → [] → [users] transition
+    emptyDebounceTimer = setTimeout(() => {
+      displayedUsers = uniqueUsers;
+    }, EMPTY_DEBOUNCE_MS);
+
+    return () => {
+      if (emptyDebounceTimer) {
+        clearTimeout(emptyDebounceTimer);
+        emptyDebounceTimer = null;
+      }
+    };
   });
 </script>
 

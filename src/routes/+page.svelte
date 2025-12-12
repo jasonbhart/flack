@@ -723,7 +723,7 @@
   {#if activeChannelId}
     <OnlineUsers
       onlineUsers={onlineUsersQuery.data}
-      isLoading={onlineUsersQuery.isLoading}
+      channelId={activeChannelId}
     />
   {/if}
 
