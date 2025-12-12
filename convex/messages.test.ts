@@ -172,12 +172,12 @@ describe("messages", () => {
       const t = convexTest(schema, modules);
       const { userId: aliceId, sessionToken: aliceToken } = await createAuthenticatedUser(
         t,
-        "Alice",
+        "alice",
         "alice@example.com"
       );
       const { userId: bobId, sessionToken: bobToken } = await createAuthenticatedUser(
         t,
-        "Bob",
+        "bob",
         "bob@example.com"
       );
 
@@ -218,11 +218,11 @@ describe("messages", () => {
       const t = convexTest(schema, modules);
       const { sessionToken: aliceToken } = await createAuthenticatedUser(
         t,
-        "Alice",
+        "alice",
         "alice@example.com"
       );
       // Create outsider (not a member)
-      await createAuthenticatedUser(t, "Charlie", "charlie@example.com");
+      await createAuthenticatedUser(t, "charlie", "charlie@example.com");
 
       const { channelId } = await t.mutation(api.channels.create, {
         sessionToken: aliceToken,
@@ -250,7 +250,7 @@ describe("messages", () => {
       const t = convexTest(schema, modules);
       const { sessionToken } = await createAuthenticatedUser(
         t,
-        "Alice",
+        "alice",
         "alice@example.com"
       );
 
@@ -292,12 +292,12 @@ describe("messages", () => {
       const t = convexTest(schema, modules);
       const { sessionToken: aliceToken } = await createAuthenticatedUser(
         t,
-        "Alice",
+        "alice",
         "alice@example.com"
       );
       const { userId: bobId, sessionToken: bobToken } = await createAuthenticatedUser(
         t,
-        "Bob",
+        "bob",
         "bob@example.com"
       );
 
@@ -336,12 +336,12 @@ describe("messages", () => {
       const t = convexTest(schema, modules);
       const { sessionToken: aliceToken } = await createAuthenticatedUser(
         t,
-        "Alice",
+        "alice",
         "alice@example.com"
       );
       const { sessionToken: bobToken } = await createAuthenticatedUser(
         t,
-        "Bob",
+        "bob",
         "bob@example.com"
       );
 
@@ -350,7 +350,7 @@ describe("messages", () => {
         name: "mentionmap-test",
       });
 
-      // Add Bob as member
+      // Add bob as member
       const { token: inviteToken } = await t.mutation(api.channelInvites.create, {
         sessionToken: aliceToken,
         channelId,
@@ -360,7 +360,7 @@ describe("messages", () => {
         token: inviteToken,
       });
 
-      // Send message mentioning Bob
+      // Send message mentioning bob (case-insensitive: @Bob resolves to user 'bob')
       await t.mutation(api.messages.send, {
         sessionToken: aliceToken,
         channelId,
@@ -376,7 +376,8 @@ describe("messages", () => {
 
       expect(messages).toHaveLength(1);
       expect(messages[0].mentionMap).toBeDefined();
-      expect(messages[0].mentionMap?.Bob).toBeDefined();
+      // MentionMap uses the user's stored name (lowercase) -> userId
+      expect(messages[0].mentionMap?.bob).toBeDefined();
     });
   });
 

@@ -1,7 +1,14 @@
 import { v } from "convex/values";
 import { withAuthQuery, withAuthMutation } from "./authMiddleware";
 import { checkMembership } from "./channelMembers";
+import { checkRateLimit } from "./rateLimiter";
 import type { Id } from "./_generated/dataModel";
+
+// Rate limits for message sending (per user)
+const MESSAGE_RATE_LIMITS = {
+  perMinute: 30, // 30 messages/minute (burst)
+  perHour: 500,  // 500 messages/hour (sustained)
+};
 
 // Regex pattern for @mentions - matches @username (alphanumeric + underscores)
 // NOTE: Keep in sync with src/lib/utils/mentionParser.ts (client-side parser)
@@ -130,6 +137,39 @@ export const send = withAuthMutation({
     clientMutationId: v.string(),
   },
   handler: async (ctx, args) => {
+    // Rate limit check (per user) - prevent spam attacks
+    const minuteLimit = await checkRateLimit(
+      ctx,
+      `msg:${ctx.user._id}`,
+      "minute",
+      MESSAGE_RATE_LIMITS.perMinute
+    );
+    if (!minuteLimit.allowed) {
+      throw new Error(
+        JSON.stringify({
+          code: 429,
+          message: "Sending too fast. Please slow down.",
+          retryAfterSeconds: minuteLimit.retryAfterSeconds,
+        })
+      );
+    }
+
+    const hourLimit = await checkRateLimit(
+      ctx,
+      `msg:${ctx.user._id}`,
+      "hour",
+      MESSAGE_RATE_LIMITS.perHour
+    );
+    if (!hourLimit.allowed) {
+      throw new Error(
+        JSON.stringify({
+          code: 429,
+          message: "Message limit reached. Please try again later.",
+          retryAfterSeconds: hourLimit.retryAfterSeconds,
+        })
+      );
+    }
+
     // Verify channel membership
     const isMember = await checkMembership(ctx, args.channelId, ctx.user._id);
     if (!isMember) {
@@ -154,13 +194,15 @@ export const send = withAuthMutation({
 
     // Resolve usernames to user IDs and validate channel membership
     // Only check membership for mentioned users (O(mentions) not O(members))
+    // Normalize to lowercase for case-insensitive lookup (@John -> john)
     const validMentions: Id<"users">[] = [];
     if (usernames.length > 0) {
       for (const username of usernames) {
-        // Find user by name
+        // Find user by name (case-insensitive via lowercase normalization)
+        const normalizedUsername = username.toLowerCase();
         const user = await ctx.db
           .query("users")
-          .withIndex("by_name", (q) => q.eq("name", username))
+          .withIndex("by_name", (q) => q.eq("name", normalizedUsername))
           .first();
 
         // Validate membership individually using efficient composite index

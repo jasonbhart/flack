@@ -106,6 +106,25 @@
     })();
   });
 
+  // Handle notification clicks (from NotificationService postMessage)
+  $effect(() => {
+    if (!browser) return;
+
+    function handleNotificationClick(event: MessageEvent) {
+      // Only handle our notification click messages
+      if (event.data?.type !== "FLACK_NOTIFICATION_CLICK") return;
+
+      const { channelId } = event.data;
+      if (channelId && typeof channelId === "string") {
+        // Navigate to the channel - type assertion needed for Convex ID
+        activeChannelId = channelId as Id<"channels">;
+      }
+    }
+
+    window.addEventListener("message", handleNotificationClick);
+    return () => window.removeEventListener("message", handleNotificationClick);
+  });
+
   // Handle logout
   async function handleLogout() {
     // Stop heartbeat first to prevent new presence updates

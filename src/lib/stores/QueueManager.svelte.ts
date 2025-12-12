@@ -401,42 +401,48 @@ class MessageQueue {
   private async process(entry: QueueEntry): Promise<void> {
     if (!this.sendMutation || !this.isOnline) return;
 
+    const clientMutationId = entry.clientMutationId;
+
     // Guard: ensure entry still exists in queue (may have been deleted)
-    if (!this.queue.some((e) => e.clientMutationId === entry.clientMutationId)) {
+    if (!this.queue.some((e) => e.clientMutationId === clientMutationId)) {
       return;
     }
 
     // Update status to sending (use debounced persist for status changes)
     this.queue = this.queue.map((e) =>
-      e.clientMutationId === entry.clientMutationId
+      e.clientMutationId === clientMutationId
         ? { ...e, status: "sending" as const }
         : e
     );
     this.debouncedPersist();
 
+    // Re-fetch entry to get latest data (body may have been edited, etc.)
+    const freshEntry = this.queue.find((e) => e.clientMutationId === clientMutationId);
+    if (!freshEntry) return;
+
     try {
       const sessionToken = this.sessionTokenGetter?.() ?? undefined;
       await this.sendMutation({
-        channelId: entry.channelId,
-        body: entry.body,
-        clientMutationId: entry.clientMutationId,
-        authorName: entry.authorName,
+        channelId: freshEntry.channelId,
+        body: freshEntry.body,
+        clientMutationId: freshEntry.clientMutationId,
+        authorName: freshEntry.authorName,
         sessionToken,
       });
 
       // Success - mark as confirming (prevents duplicates during async removal)
-      this.markConfirming(entry.clientMutationId);
+      this.markConfirming(clientMutationId);
     } catch (error) {
       // Failure - update status and increment retry count
       const updatedEntry = this.queue.find(
-        (e) => e.clientMutationId === entry.clientMutationId
+        (e) => e.clientMutationId === clientMutationId
       );
       if (!updatedEntry) return;
 
       const newRetryCount = updatedEntry.retryCount + 1;
 
       this.queue = this.queue.map((e) =>
-        e.clientMutationId === entry.clientMutationId
+        e.clientMutationId === clientMutationId
           ? {
               ...e,
               status: "failed" as const,
@@ -449,7 +455,7 @@ class MessageQueue {
 
       // Schedule retry if under max retries
       if (newRetryCount < MAX_RETRIES) {
-        this.scheduleRetry(entry.clientMutationId, newRetryCount);
+        this.scheduleRetry(clientMutationId, newRetryCount);
       }
     }
   }

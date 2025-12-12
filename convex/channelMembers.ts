@@ -1,13 +1,16 @@
 import { v } from "convex/values";
-import { query, mutation } from "./_generated/server";
+import { internalQuery } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { withAuthQuery, withAuthMutation, type AuthenticatedQueryCtx, type AuthenticatedMutationCtx } from "./authMiddleware";
 
 /**
  * Check if a user is a member of a channel.
  * Uses composite index for O(1) lookup.
+ *
+ * INTERNAL ONLY - not exposed to clients to prevent social graph enumeration.
+ * Use checkMembership() helper for in-mutation checks.
  */
-export const isMember = query({
+export const isMember = internalQuery({
   args: {
     channelId: v.id("channels"),
     userId: v.id("users"),
@@ -27,8 +30,10 @@ export const isMember = query({
 /**
  * Get membership details for a user in a channel.
  * Returns null if not a member.
+ *
+ * INTERNAL ONLY - not exposed to clients to prevent role enumeration.
  */
-export const getMembership = query({
+export const getMembership = internalQuery({
   args: {
     channelId: v.id("channels"),
     userId: v.id("users"),
@@ -45,12 +50,25 @@ export const getMembership = query({
 
 /**
  * List all members of a channel.
+ * Requires authentication AND membership in the channel.
  */
 export const listMembers = withAuthQuery({
   args: {
     channelId: v.id("channels"),
   },
   handler: async (ctx, args) => {
+    // Authorization: verify requester is a member of this channel
+    const requesterMembership = await ctx.db
+      .query("channelMembers")
+      .withIndex("by_channel_and_user", (q) =>
+        q.eq("channelId", args.channelId).eq("userId", ctx.user._id)
+      )
+      .first();
+
+    if (!requesterMembership) {
+      throw new Error("Unauthorized: Not a member of this channel");
+    }
+
     const memberships = await ctx.db
       .query("channelMembers")
       .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))

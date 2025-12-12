@@ -101,12 +101,15 @@ async function getOrCreateUser(
 
 /**
  * Send a magic link to the user's email.
- * Rate limited: 1/min per email, 5/hour per email, 10/min per IP.
+ * Rate limited: 1/min per email, 5/hour per email.
+ *
+ * Note: IP-based rate limiting removed - client-supplied IPs are trivially spoofed.
+ * For proper IP rate limiting, use a reverse proxy (Cloudflare, nginx) that sets
+ * trusted headers, then extract from Convex HTTP actions if needed.
  */
 export const sendMagicLink = mutation({
   args: {
     email: v.string(),
-    clientIp: v.optional(v.string()), // Optional: passed from client for IP rate limiting
   },
   handler: async (ctx, args) => {
     const email = normalizeEmail(args.email);
@@ -117,19 +120,11 @@ export const sendMagicLink = mutation({
     }
 
     // Check rate limits before proceeding
+    // Only email-based limits - IP limits require trusted proxy headers
     const rateLimitChecks: Array<{ key: string; type: "minute" | "hour"; limit: number }> = [
       { key: `email:${email}`, type: "minute", limit: RATE_LIMITS.magicLink.perMinutePerEmail },
       { key: `email:${email}`, type: "hour", limit: RATE_LIMITS.magicLink.perHourPerEmail },
     ];
-
-    // Add IP rate limit if provided
-    if (args.clientIp) {
-      rateLimitChecks.push({
-        key: `ip:${args.clientIp}`,
-        type: "minute",
-        limit: RATE_LIMITS.magicLink.perMinutePerIp,
-      });
-    }
 
     const rateLimitResult = await checkMultipleRateLimits(ctx, rateLimitChecks);
 
@@ -216,16 +211,19 @@ export const verifyMagicLink = mutation({
       .withIndex("by_token", (q) => q.eq("token", tokenHash))
       .first();
 
+    // Use generic error message for all failure cases to prevent token enumeration
+    const genericError = "Invalid or expired link";
+
     if (!authToken) {
-      throw new Error("Invalid or expired link");
+      throw new Error(genericError);
     }
 
     if (authToken.used) {
-      throw new Error("This link has already been used");
+      throw new Error(genericError);
     }
 
     if (authToken.expiresAt < Date.now()) {
-      throw new Error("This link has expired");
+      throw new Error(genericError);
     }
 
     // Mark token as used
@@ -332,11 +330,14 @@ export const verifyCode = mutation({
       (t) => (t.attempts ?? 0) < MAX_CODE_ATTEMPTS
     );
 
+    // Use generic error to prevent revealing whether tokens exist for this email
+    const genericError = "Invalid or expired code";
+
     if (validTokens.length === 0 && authTokens.length > 0) {
-      // All tokens exhausted - return error (state already persisted)
+      // All tokens exhausted - return generic error to prevent enumeration
       return {
         success: false,
-        error: "Too many failed attempts. Please request a new code.",
+        error: genericError,
       };
     }
 
@@ -358,7 +359,7 @@ export const verifyCode = mutation({
         });
       }
       // RETURN instead of throw - ensures attempt increment persists
-      return { success: false, error: "Invalid or expired code" };
+      return { success: false, error: genericError };
     }
 
     // Mark token as used
