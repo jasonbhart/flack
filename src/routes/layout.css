@@ -29,6 +29,7 @@
 :root {
   --bg-primary: var(--color-paper-50);
   --bg-secondary: var(--color-paper-100);
+  --bg-tertiary: var(--color-paper-200);
   --text-primary: var(--color-paper-800);
   /* Adjusted for WCAG AA 4.5:1 contrast on light backgrounds */
   --text-secondary: #64748B; /* slate-500: 5.3:1 on paper-50 */
@@ -41,6 +42,7 @@
 .dark {
   --bg-primary: var(--color-ink-900);
   --bg-secondary: var(--color-ink-800);
+  --bg-tertiary: var(--color-ink-700);
   --text-primary: var(--color-ink-100);
   /* Adjusted for WCAG AA 4.5:1 contrast on dark backgrounds */
   --text-secondary: #CBD5E1; /* slate-300: 8.5:1 on ink-900 */

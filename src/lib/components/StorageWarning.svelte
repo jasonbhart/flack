@@ -57,7 +57,7 @@
   </div>
 
   <div
-    class="fixed bottom-4 right-4 z-40 max-w-sm p-4 rounded-lg shadow-lg {warningMessage.severity === 'danger' ? 'bg-danger text-white' : 'bg-warning text-warning-foreground'}"
+    class="fixed bottom-4 right-4 z-40 max-w-sm p-4 rounded-lg shadow-lg {warningMessage.severity === 'danger' ? 'bg-red-500 text-white' : 'bg-amber-500 text-white'}"
   >
     <div class="flex items-start gap-3">
       <svg

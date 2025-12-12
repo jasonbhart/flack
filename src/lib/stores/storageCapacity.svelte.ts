@@ -1,4 +1,5 @@
 import { browser } from "$app/environment";
+import { formatBytes } from "$lib/utils/storageDetection";
 
 /**
  * Storage Capacity Store
@@ -31,15 +32,6 @@ let lastUpdated = $state<Date | null>(null);
 const percentage = $derived(quota > 0 ? (usage / quota) * 100 : 0);
 const isWarning = $derived(quota > 0 && usage / quota >= WARNING_THRESHOLD);
 const isCritical = $derived(quota > 0 && usage / quota >= CRITICAL_THRESHOLD);
-
-// Format bytes to human-readable string
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-}
 
 // Fetch storage estimate
 async function fetchEstimate(): Promise<void> {
