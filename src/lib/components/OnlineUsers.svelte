@@ -58,13 +58,14 @@
       lastChannelId = channelId;
     }
 
-    // If we have users, show immediately (regardless of channel change)
-    if (uniqueUsers.length > 0) {
+    // If we have users OR channel changed, update immediately
+    // (Better to show empty state than stale users from previous channel)
+    if (uniqueUsers.length > 0 || channelChanged) {
       displayedUsers = uniqueUsers;
       return;
     }
 
-    // Empty result - debounce to handle: undefined → [] → [users] transition
+    // Same channel, empty result - debounce to handle: undefined → [] → [users] transition
     emptyDebounceTimer = setTimeout(() => {
       displayedUsers = uniqueUsers;
     }, EMPTY_DEBOUNCE_MS);
