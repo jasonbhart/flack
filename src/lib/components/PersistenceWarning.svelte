@@ -17,7 +17,7 @@
 
 {#if !isPersistenceEnabled && !dismissed}
   <div
-    class="fixed top-0 left-0 right-0 z-40 bg-warning text-warning-foreground py-2 px-4 text-center text-sm flex items-center justify-center gap-2"
+    class="fixed top-0 left-0 right-0 z-40 bg-amber-500 text-white py-2 px-4 text-center text-sm flex items-center justify-center gap-2"
   >
     <svg
       xmlns="http://www.w3.org/2000/svg"
