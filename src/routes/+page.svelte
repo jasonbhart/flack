@@ -223,7 +223,8 @@
   // Queries
   const channelsQuery = useQuery(
     api.channels.list,
-    () => authStore.sessionToken ? { sessionToken: authStore.sessionToken } : "skip"
+    () => authStore.sessionToken ? { sessionToken: authStore.sessionToken } : "skip",
+    { keepPreviousData: true }
   );
   const messagesQuery = useQuery(
     api.messages.list,

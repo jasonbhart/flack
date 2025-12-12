@@ -28,6 +28,12 @@
   // Modal state
   let showNewChannelModal = $state(false);
 
+  // DEBUG: Track component lifecycle
+  $effect(() => {
+    console.log('[ChannelList] mounted');
+    return () => console.log('[ChannelList] unmounted');
+  });
+
   // Get unread count with 99+ cap for display
   function getDisplayCount(channelId: string): string | null {
     const count = unreadCounts.getCount(channelId);
