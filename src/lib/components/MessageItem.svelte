@@ -1,8 +1,11 @@
 <script lang="ts">
   import { formatRelativeTime, formatFullTimestamp } from "$lib/utils/time";
-  import { tokenize } from "$lib/utils/mentionParser";
+  import { tokenize } from "$lib/utils/messageParser";
   import MentionSpan from "./MentionSpan.svelte";
   import SpecialMentionSpan from "./SpecialMentionSpan.svelte";
+  import UrlLink from "./UrlLink.svelte";
+  import InlineCode from "./InlineCode.svelte";
+  import CodeBlock from "./CodeBlock.svelte";
   import type { Id } from "../../../convex/_generated/dataModel";
 
   const MAX_RETRIES = 5;
@@ -70,6 +73,12 @@
         />
       {:else if token.type === "special-mention" && token.specialType}
         <SpecialMentionSpan type={token.specialType} />
+      {:else if token.type === "url" && token.url}
+        <UrlLink url={token.url} displayText={token.content} />
+      {:else if token.type === "inline-code"}
+        <InlineCode code={token.content} />
+      {:else if token.type === "code-block"}
+        <CodeBlock code={token.content} language={token.language} />
       {/if}
     {/each}
   </div>
