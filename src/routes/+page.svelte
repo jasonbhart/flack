@@ -233,21 +233,18 @@
       : "skip")
   );
 
-  // Presence queries - use keepPreviousData to prevent flicker on channel switch
-  // This keeps showing the old channel's data until new data loads
+  // Presence queries
   const onlineUsersQuery = useQuery(
     api.presence.listOnline,
     () => (activeChannelId && authStore.sessionToken
       ? { channelId: activeChannelId, sessionToken: authStore.sessionToken }
-      : "skip"),
-    { keepPreviousData: true }
+      : "skip")
   );
   const typingUsersQuery = useQuery(
     api.presence.listTyping,
     () => (activeChannelId && authStore.sessionToken
       ? { channelId: activeChannelId, sessionToken: authStore.sessionToken }
-      : "skip"),
-    { keepPreviousData: true }
+      : "skip")
   );
 
   // Channel members query for @mention autocomplete
@@ -255,8 +252,7 @@
     api.channelMembers.listMembers,
     () => (activeChannelId && authStore.sessionToken
       ? { channelId: activeChannelId, sessionToken: authStore.sessionToken }
-      : "skip"),
-    { keepPreviousData: true }
+      : "skip")
   );
 
   // Transform channel members to MentionableUser format for autocomplete
@@ -728,9 +724,9 @@
     <EmptyState variant="channels" />
   {/if}
 
-  <!-- Online Users - debounced empty state prevents flicker during channel switch -->
+  <!-- Online Users - component handles channel transition debouncing internally -->
   {#if activeChannelId}
-    <OnlineUsers onlineUsers={onlineUsersQuery.data ?? []} />
+    <OnlineUsers onlineUsers={onlineUsersQuery.data ?? []} channelId={activeChannelId} />
   {/if}
 
   <!-- Spacer -->

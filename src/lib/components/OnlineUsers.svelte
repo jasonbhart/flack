@@ -11,10 +11,12 @@
   }
 
   const ONLINE_TIMEOUT = 60000; // 60 seconds
-  const EMPTY_STATE_DELAY = 150; // ms to wait before showing empty state
+  const SETTLE_DELAY = 100; // ms to wait before updating displayed users
 
-  let { onlineUsers }: {
+  let { onlineUsers, channelId }: {
     onlineUsers: OnlineUser[];
+    /** Current channel ID - used to track channel switches */
+    channelId: string;
   } = $props();
 
   // Reactive timer to drive staleness updates even when no server data changes
@@ -23,18 +25,16 @@
   $effect(() => {
     const interval = setInterval(() => {
       now = Date.now();
-    }, 5000); // Update every 5 seconds (sufficient for 60s timeout)
+    }, 5000);
     return () => clearInterval(interval);
   });
 
-  // Client-side staleness filtering - removes users inactive > 60s
-  // This ensures UI updates immediately when users go offline
+  // Client-side staleness filtering
   const activeUsers = $derived(
     onlineUsers.filter((u) => now - u.updated < ONLINE_TIMEOUT)
   );
 
-  // Deduplicate by userId (same user on multiple devices shows once)
-  // Keep the most recently updated session for each user
+  // Deduplicate by userId
   const uniqueUsers = $derived.by(() => {
     const userMap = new Map<string, OnlineUser>();
     for (const user of activeUsers) {
@@ -46,23 +46,29 @@
     return Array.from(userMap.values());
   });
 
-  // Debounced empty state - prevents flash during channel transitions
-  // Only show "No one else is online" after data has settled for EMPTY_STATE_DELAY ms
+  // Stable display state - debounced to prevent flicker during channel transitions
+  // Shows nothing during transitions, then settles to actual state
+  let displayedUsers = $state<OnlineUser[]>([]);
   let showEmptyState = $state(false);
+  let lastChannelId = $state(channelId);
 
   $effect(() => {
-    const isEmpty = uniqueUsers.length === 0;
+    const currentChannel = channelId;
+    const users = uniqueUsers;
+    const isChannelSwitch = currentChannel !== lastChannelId;
 
-    if (!isEmpty) {
-      // Users exist - show them immediately, hide empty state
+    if (isChannelSwitch) {
+      // Channel changed - clear display immediately to avoid showing wrong channel's users
+      displayedUsers = [];
       showEmptyState = false;
-      return;
+      lastChannelId = currentChannel;
     }
 
-    // Empty - delay showing empty state to avoid flash during channel switch
+    // Debounce updates to let data settle
     const timer = setTimeout(() => {
-      showEmptyState = true;
-    }, EMPTY_STATE_DELAY);
+      displayedUsers = users;
+      showEmptyState = users.length === 0;
+    }, isChannelSwitch ? SETTLE_DELAY : 0);
 
     return () => clearTimeout(timer);
   });
@@ -72,11 +78,10 @@
   <div class="text-xs text-ink-400 uppercase mb-2">Online</div>
 
   {#if showEmptyState}
-    <!-- Debounced empty state - only shown after 150ms of no users -->
     <EmptyState variant="users" />
-  {:else if uniqueUsers.length > 0}
+  {:else if displayedUsers.length > 0}
     <ul class="flex flex-col gap-1" role="list" aria-label="Online users">
-      {#each uniqueUsers as user (user.userId)}
+      {#each displayedUsers as user (user.userId)}
         <li class="flex items-center gap-2 text-sm">
           <PresenceIndicator isOnline={true} />
           <span>{user.displayName}</span>
@@ -84,4 +89,5 @@
       {/each}
     </ul>
   {/if}
+  <!-- During channel transitions: shows nothing briefly while data settles -->
 </div>
