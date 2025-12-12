@@ -719,9 +719,12 @@
     <EmptyState variant="channels" />
   {/if}
 
-  <!-- Online Users - undefined=loading (no update), []=empty, [...]= users -->
+  <!-- Online Users -->
   {#if activeChannelId}
-    <OnlineUsers onlineUsers={onlineUsersQuery.data} />
+    <OnlineUsers
+      onlineUsers={onlineUsersQuery.data}
+      isLoading={onlineUsersQuery.isLoading}
+    />
   {/if}
 
   <!-- Spacer -->

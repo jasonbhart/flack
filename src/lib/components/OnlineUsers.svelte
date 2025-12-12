@@ -11,11 +11,11 @@
   }
 
   const ONLINE_TIMEOUT = 60000; // 60 seconds
-  const EMPTY_DEBOUNCE_MS = 150; // Wait before showing empty state
 
-  let { onlineUsers }: {
-    /** undefined = loading/transitioning, [] = confirmed empty, [...] = users */
+  let { onlineUsers, isLoading = false }: {
     onlineUsers: OnlineUser[] | undefined;
+    /** When true, query is loading - preserve previous display */
+    isLoading?: boolean;
   } = $props();
 
   // Staleness timer
@@ -25,9 +25,9 @@
     return () => clearInterval(interval);
   });
 
-  // Filter stale and deduplicate (only when we have data)
+  // Filter stale and deduplicate
   const uniqueUsers = $derived.by(() => {
-    if (!onlineUsers) return undefined; // preserve undefined
+    if (!onlineUsers) return [];
     const userMap = new Map<string, OnlineUser>();
     for (const user of onlineUsers) {
       if (now - user.updated >= ONLINE_TIMEOUT) continue;
@@ -39,40 +39,15 @@
     return Array.from(userMap.values());
   });
 
-  // Display state with debounced empty handling
+  // Display state - only update when NOT loading
   let displayedUsers = $state<OnlineUser[]>([]);
-  let emptyDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   $effect(() => {
-    // Cleanup timer on effect re-run
-    if (emptyDebounceTimer) {
-      clearTimeout(emptyDebounceTimer);
-      emptyDebounceTimer = null;
-    }
+    // When loading, keep showing previous data to prevent flash
+    if (isLoading) return;
 
-    if (uniqueUsers === undefined) {
-      // Loading - keep showing previous data
-      return;
-    }
-
-    if (uniqueUsers.length > 0) {
-      // Have users - update immediately
-      displayedUsers = uniqueUsers;
-      return;
-    }
-
-    // Empty array - debounce before showing empty state
-    // This handles the Convex pattern of: undefined → [] → [actual data]
-    emptyDebounceTimer = setTimeout(() => {
-      displayedUsers = [];
-    }, EMPTY_DEBOUNCE_MS);
-
-    return () => {
-      if (emptyDebounceTimer) {
-        clearTimeout(emptyDebounceTimer);
-        emptyDebounceTimer = null;
-      }
-    };
+    // Not loading - safe to update display
+    displayedUsers = uniqueUsers;
   });
 </script>
 
