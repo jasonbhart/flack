@@ -2,6 +2,7 @@
   import { browser } from "$app/environment";
   import { goto } from "$app/navigation";
   import { useConvexClient } from "convex-svelte";
+  import { ConvexError } from "convex/values";
   import { api } from "../../../../convex/_generated/api";
   import { authStore } from "$lib/stores/auth.svelte";
 
@@ -93,7 +94,15 @@
       }, 1500);
     } catch (error) {
       status = "error";
-      const rawMessage = error instanceof Error ? error.message : "Verification failed";
+      // ConvexError.data contains the error message we threw on the server
+      // Regular Error.message contains generic "Server Error" for non-ConvexError throws
+      let rawMessage = "Verification failed";
+      if (error instanceof ConvexError) {
+        // ConvexError.data is the value passed to new ConvexError(value)
+        rawMessage = typeof error.data === "string" ? error.data : "Verification failed";
+      } else if (error instanceof Error) {
+        rawMessage = error.message;
+      }
       const parsed = parseError(rawMessage);
       errorMessage = parsed.displayMessage;
       errorGuidance = parsed.guidance;

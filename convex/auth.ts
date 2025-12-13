@@ -1,7 +1,7 @@
 import { mutation, query, internalMutation } from "./_generated/server";
 import { components } from "./_generated/api";
 import { Resend } from "@convex-dev/resend";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { withAuthMutation } from "./authMiddleware";
 import { checkRateLimit, checkMultipleRateLimits, RATE_LIMITS } from "./rateLimiter";
 import { hashToken, normalizeEmail } from "./authHelpers";
@@ -215,18 +215,18 @@ export const verifyMagicLink = mutation({
 
     // Token not found - could be fake, corrupted, or already cleaned up
     if (!authToken) {
-      throw new Error("Invalid or expired link");
+      throw new ConvexError("Invalid or expired link");
     }
 
     // Token already used - common case when user clicks link twice
     // This is a friendly error since it's expected behavior
     if (authToken.used) {
-      throw new Error("This link has already been used. Each magic link can only be used once.");
+      throw new ConvexError("This link has already been used. Each magic link can only be used once.");
     }
 
     // Token expired - 15 minute window passed
     if (authToken.expiresAt < Date.now()) {
-      throw new Error("This link has expired. Magic links are valid for 15 minutes.");
+      throw new ConvexError("This link has expired. Magic links are valid for 15 minutes.");
     }
 
     // Mark token as used
