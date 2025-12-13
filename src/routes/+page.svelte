@@ -32,6 +32,8 @@
   import NotificationPrompt from "$lib/components/NotificationPrompt.svelte";
   import NotificationSettings from "$lib/components/NotificationSettings.svelte";
   import StorageCapacity from "$lib/components/StorageCapacity.svelte";
+  import TodoButton from "$lib/components/todos/TodoButton.svelte";
+  import TodoPanel from "$lib/components/todos/TodoPanel.svelte";
   import { notificationService } from "$lib/services/NotificationService.svelte";
   import { systemTrayManager } from "$lib/services/SystemTrayManager.svelte";
   import { responsive } from "$lib/utils/responsive.svelte";
@@ -543,6 +545,7 @@
   let shortcutsHelpOpen = $state(false);
   let inviteModalOpen = $state(false);
   let settingsOpen = $state(false);
+  let todoPanelOpen = $state(false);
 
   // Notification prompt state
   let showNotificationPrompt = $state(false);
@@ -862,23 +865,30 @@
       class="flex-1 bg-[var(--bg-primary)] flex flex-col"
     >
       {#if activeChannelId}
-        <!-- Channel header with Invite button -->
+        <!-- Channel header with Invite button and Todos button -->
         <div class="flex items-center justify-between px-4 py-3 border-b border-[var(--border-default)]">
           <h2 class="text-lg font-semibold text-[var(--text-primary)]">
             #{activeChannelName ?? ""}
           </h2>
-          {#if canInvite}
-            <button
-              onclick={() => inviteModalOpen = true}
-              class="flex items-center gap-1.5 px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-volt/10 rounded transition-colors"
-              aria-label="Invite people to this channel"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-              </svg>
-              <span>Invite</span>
-            </button>
-          {/if}
+          <div class="flex items-center gap-2">
+            <TodoButton
+              channelId={activeChannelId}
+              sessionToken={authStore.sessionToken}
+              onclick={() => todoPanelOpen = true}
+            />
+            {#if canInvite}
+              <button
+                onclick={() => inviteModalOpen = true}
+                class="flex items-center gap-1.5 px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-volt/10 rounded transition-colors"
+                aria-label="Invite people to this channel"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                </svg>
+                <span>Invite</span>
+              </button>
+            {/if}
+          </div>
         </div>
 
         {#if messagesQuery.error}
@@ -935,6 +945,15 @@
     onClose={() => inviteModalOpen = false}
   />
 {/if}
+
+<!-- Todo Panel -->
+<TodoPanel
+  isOpen={todoPanelOpen}
+  channelId={activeChannelId}
+  sessionToken={authStore.sessionToken}
+  currentUserId={(authStore.user?.id as Id<"users">) ?? null}
+  onclose={() => todoPanelOpen = false}
+/>
 
 {/if}
 <!-- End of auth check -->

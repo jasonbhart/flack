@@ -12,9 +12,10 @@ const MESSAGE_RATE_LIMITS = {
   perHour: 500,  // 500 messages/hour (sustained)
 };
 
-// Regex pattern for @mentions - matches @username (alphanumeric + underscores)
-// NOTE: Keep in sync with src/lib/utils/mentionParser.ts (client-side parser)
-const MENTION_PATTERN = /@([a-zA-Z][a-zA-Z0-9_]*)/g;
+// Regex pattern for @mentions - matches @username (alphanumeric + underscores, dots, dashes)
+// Supports email-derived usernames like john.doe or john-doe
+// NOTE: Keep in sync with src/lib/utils/messageParser.ts (client-side parser)
+const MENTION_PATTERN = /@([a-zA-Z][a-zA-Z0-9_.-]*)/g;
 
 // Special mention types
 type SpecialMention = "channel" | "here";
@@ -195,15 +196,15 @@ export const send = withAuthMutation({
 
     // Resolve usernames to user IDs and validate channel membership
     // Only check membership for mentioned users (O(mentions) not O(members))
-    // Normalize to lowercase for case-insensitive lookup (@John -> john)
+    // Use nameLower index for case-insensitive lookup (@John -> john)
     const validMentions: Id<"users">[] = [];
     if (usernames.length > 0) {
       for (const username of usernames) {
-        // Find user by name (case-insensitive via lowercase normalization)
+        // Find user by nameLower (case-insensitive lookup)
         const normalizedUsername = username.toLowerCase();
         const user = await ctx.db
           .query("users")
-          .withIndex("by_name", (q) => q.eq("name", normalizedUsername))
+          .withIndex("by_name_lower", (q) => q.eq("nameLower", normalizedUsername))
           .first();
 
         // Validate membership individually using efficient composite index

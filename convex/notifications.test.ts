@@ -12,7 +12,7 @@ async function createAuthenticatedUser(
   email: string
 ) {
   const userId = await t.run(async (ctx) => {
-    return await ctx.db.insert("users", { name, email });
+    return await ctx.db.insert("users", { name, email, nameLower: name.toLowerCase() });
   });
 
   const rawToken = `token-${email}-${Date.now()}-${Math.random()}`;
@@ -244,6 +244,7 @@ describe("notifications", () => {
         return await ctx.db.insert("users", {
           name: "bob",
           email: "", // Empty email
+          nameLower: "bob",
         });
       });
 

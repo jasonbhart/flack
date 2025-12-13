@@ -8,9 +8,11 @@ export default defineSchema({
     email: v.string(),
     avatarUrl: v.optional(v.string()),
     isTemp: v.optional(v.boolean()), // True for guest/anonymous users
+    nameLower: v.optional(v.string()), // Lowercase name for case-insensitive @mention lookup
   })
     .index("by_email", ["email"])
-    .index("by_name", ["name"]) // For @mention lookup
+    .index("by_name", ["name"]) // For exact name lookup
+    .index("by_name_lower", ["nameLower"]) // For case-insensitive @mention lookup
     .index("by_is_temp", ["isTemp"]),
 
   // Auth tokens for magic link authentication
@@ -135,4 +137,19 @@ export default defineSchema({
     userId: v.id("users"),
     emailNotifications: v.boolean(), // true = send emails, false = opted out
   }).index("by_user", ["userId"]),
+
+  // Channel todos - lightweight GTD-aligned task management per channel
+  channelTodos: defineTable({
+    channelId: v.id("channels"),
+    text: v.string(), // Todo title (max 500 chars, enforced in mutation)
+    completed: v.boolean(),
+    createdBy: v.id("users"),
+    createdAt: v.number(), // Unix timestamp
+    completedBy: v.optional(v.id("users")), // Who marked complete
+    completedAt: v.optional(v.number()), // When marked complete
+    ownerId: v.optional(v.id("users")), // Assigned owner (null = unassigned)
+    // Due date stored as timestamp of midnight in creator's local timezone.
+    // Frontend creates this via new Date(year, month-1, day).getTime()
+    dueDate: v.optional(v.number()),
+  }).index("by_channel", ["channelId"]),
 });

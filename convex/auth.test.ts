@@ -43,6 +43,7 @@ describe("auth", () => {
         return await ctx.db.insert("users", {
           name: "Test User",
           email: "test@example.com",
+          nameLower: "test user",
         });
       });
 
@@ -79,6 +80,7 @@ describe("auth", () => {
         return await ctx.db.insert("users", {
           name: "Test User",
           email: "test@example.com",
+          nameLower: "test user",
         });
       });
 
@@ -115,6 +117,7 @@ describe("auth", () => {
         return await ctx.db.insert("users", {
           name: "Test User",
           email: "test@example.com",
+          nameLower: "test user",
         });
       });
 

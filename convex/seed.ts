@@ -23,6 +23,7 @@ export const seed = mutation({
     const userId = await ctx.db.insert("users", {
       name: "Test User",
       email: "test@example.com",
+      nameLower: "test user",
     });
 
     // Create user's default channel with ownership

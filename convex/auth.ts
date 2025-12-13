@@ -73,9 +73,11 @@ async function getOrCreateUser(
 
   // User doesn't exist - create new user
   // Convex's serializable isolation handles race conditions via automatic retry
+  const defaultName = email.split("@")[0];
   const userId = await ctx.db.insert("users", {
     email,
-    name: email.split("@")[0], // Default name from email
+    name: defaultName,
+    nameLower: defaultName.toLowerCase(), // For case-insensitive @mention lookup
     isTemp: false,
   });
 
@@ -468,9 +470,10 @@ export const updateProfile = withAuthMutation({
   },
   handler: async (ctx, args) => {
     // Update authenticated user's profile
-    const updates: { name?: string } = {};
+    const updates: { name?: string; nameLower?: string } = {};
     if (args.name) {
       updates.name = args.name;
+      updates.nameLower = args.name.toLowerCase();
     }
 
     if (Object.keys(updates).length > 0) {

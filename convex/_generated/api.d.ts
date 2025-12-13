@@ -22,6 +22,7 @@ import type * as notifications from "../notifications.js";
 import type * as presence from "../presence.js";
 import type * as rateLimiter from "../rateLimiter.js";
 import type * as seed from "../seed.js";
+import type * as todos from "../todos.js";
 import type * as unsubscribe from "../unsubscribe.js";
 
 import type {
@@ -45,6 +46,7 @@ declare const fullApi: ApiFromModules<{
   presence: typeof presence;
   rateLimiter: typeof rateLimiter;
   seed: typeof seed;
+  todos: typeof todos;
   unsubscribe: typeof unsubscribe;
 }>;
 

@@ -27,7 +27,9 @@ describe("InlineCode", () => {
   it("should have background styling", () => {
     render(InlineCode, { props: { code: "test" } });
     const code = screen.getByText("test");
-    expect(code.className).toContain("bg-ink-800/50");
+    // Uses CSS variables for theme support (light/dark mode)
+    expect(code.getAttribute("style")).toContain("background-color");
+    expect(code.getAttribute("style")).toContain("var(--code-header-bg)");
   });
 
   it("should have padding and rounded corners", () => {

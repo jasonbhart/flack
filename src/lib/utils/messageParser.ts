@@ -28,10 +28,11 @@ import type { Id } from "../../../convex/_generated/dataModel";
 // Regex Patterns
 // ============================================
 
-// Regex pattern for valid username characters (letters, numbers, underscores)
-// Matches @username but stops at punctuation, spaces, or special chars
+// Regex pattern for valid username characters (letters, numbers, underscores, dots, dashes)
+// Supports email-derived usernames like john.doe or john-doe
+// Matches @username but stops at punctuation (except . and -), spaces, or special chars
 // NOTE: Keep in sync with convex/messages.ts (server-side parser)
-const MENTION_PATTERN = /@([a-zA-Z][a-zA-Z0-9_]*)/g;
+const MENTION_PATTERN = /@([a-zA-Z][a-zA-Z0-9_.-]*)/g;
 
 // Special mention patterns
 const SPECIAL_MENTIONS: SpecialMention[] = ["channel", "here"];
