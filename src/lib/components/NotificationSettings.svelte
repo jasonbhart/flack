@@ -1,5 +1,10 @@
 <script lang="ts">
   import { notificationService } from "$lib/services/NotificationService.svelte";
+  import { useConvexClient, useQuery } from "convex-svelte";
+  import { api } from "../../../convex/_generated/api";
+  import { authStore } from "$lib/stores/auth.svelte";
+
+  const client = useConvexClient();
 
   // Reactive bindings to service state
   let permission = $derived(notificationService.permission);
@@ -7,6 +12,15 @@
   let notifyAllMessages = $derived(notificationService.notifyAllMessages);
   let soundEnabled = $derived(notificationService.soundEnabled);
   let isSupported = $derived(notificationService.isSupported);
+
+  // Email notification preference from server
+  // Only query if user is authenticated
+  const emailPrefQuery = useQuery(
+    api.unsubscribe.getEmailNotificationPreference,
+    () => (authStore.isAuthenticated ? {} : "skip")
+  );
+  let emailNotificationsEnabled = $derived(emailPrefQuery.data ?? true);
+  let emailPrefLoading = $state(false);
 
   async function handleRequestPermission() {
     await notificationService.requestPermission();
@@ -25,6 +39,22 @@
   function handleToggleSound(e: Event) {
     const target = e.target as HTMLInputElement;
     notificationService.setSoundEnabled(target.checked);
+  }
+
+  async function handleToggleEmailNotifications(e: Event) {
+    const target = e.target as HTMLInputElement;
+    emailPrefLoading = true;
+    try {
+      await client.mutation(api.unsubscribe.setEmailNotifications, {
+        enabled: target.checked,
+      });
+    } catch (error) {
+      console.error("[NotificationSettings] Failed to update email preference:", error);
+      // Revert the checkbox on error
+      target.checked = !target.checked;
+    } finally {
+      emailPrefLoading = false;
+    }
   }
 </script>
 
@@ -110,6 +140,26 @@
             before:content-[''] before:absolute before:w-4 before:h-4 before:bg-paper-200 before:rounded-full before:top-0.5 before:left-0.5 before:transition-transform checked:before:translate-x-5"
         />
       </label>
+
+      <!-- Email notifications toggle (separate from browser notifications) -->
+      {#if authStore.isAuthenticated}
+        <div class="pt-3 mt-3 border-t border-ink-700">
+          <label class="flex items-center justify-between cursor-pointer">
+            <div>
+              <span class="text-sm text-paper-300">Email notifications</span>
+              <p class="text-xs text-paper-500">Receive emails when mentioned while offline</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={emailNotificationsEnabled}
+              disabled={emailPrefLoading}
+              onchange={handleToggleEmailNotifications}
+              class="w-10 h-5 bg-ink-700 rounded-full relative cursor-pointer appearance-none checked:bg-volt transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+                before:content-[''] before:absolute before:w-4 before:h-4 before:bg-paper-200 before:rounded-full before:top-0.5 before:left-0.5 before:transition-transform checked:before:translate-x-5"
+            />
+          </label>
+        </div>
+      {/if}
     </div>
 
     {#if permission === "granted" && enabled}

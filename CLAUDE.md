@@ -97,6 +97,25 @@ Set via `npx convex env set`:
 - `RESEND_API_KEY` - Resend API key for sending emails
 - `RESEND_EMAIL` - Verified sender email address
 - `SITE_URL` - Frontend URL for magic links (defaults to `http://localhost:5173`)
+- `UNSUBSCRIBE_SECRET` - HMAC secret for signing unsubscribe tokens (required for email unsubscribe)
+- `CONVEX_SITE_URL` - Convex HTTP endpoint URL for List-Unsubscribe headers (e.g., `https://your-deployment.convex.site`)
+
+### Generating UNSUBSCRIBE_SECRET
+
+Generate a secure random secret for signing unsubscribe tokens:
+
+```bash
+# Generate a 32-byte random secret (recommended)
+openssl rand -base64 32
+
+# Set in Convex environment
+npx convex env set UNSUBSCRIBE_SECRET "your-generated-secret"
+```
+
+**Security notes:**
+- Keep this secret private; it signs tokens that allow unsubscribing without authentication
+- If compromised, rotate the secret (existing unsubscribe links will stop working)
+- Without this secret set, email notifications will be sent without unsubscribe headers
 
 ## Development Commands
 

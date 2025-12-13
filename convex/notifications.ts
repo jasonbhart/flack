@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { resend } from "./auth";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
+import { generateUnsubscribeToken } from "./unsubscribe";
 
 // Delay before checking if user is still offline (4 hours)
 export const MENTION_NOTIFICATION_DELAY_MS = 4 * 60 * 60 * 1000;
@@ -55,12 +56,20 @@ function composeNotificationEmail(params: {
   channelName: string;
   messagePreview: string;
   messageUrl: string;
+  unsubscribeUrl?: string;
 }): { subject: string; html: string } {
   const escapedPreview = escapeHtml(params.messagePreview);
   const truncatedPreview =
     escapedPreview.length > 200
       ? escapedPreview.substring(0, 200) + "..."
       : escapedPreview;
+
+  // Build footer with optional unsubscribe link
+  const footerText = params.unsubscribeUrl
+    ? `You received this email because you were mentioned while offline.
+          <br/><a href="${params.unsubscribeUrl}" style="color: #666; text-decoration: underline;">Unsubscribe from these emails</a> or update your preferences in Flack settings.`
+    : `You received this email because you were mentioned while offline.
+          <br/>To stop these notifications, update your preferences in Flack settings.`;
 
   return {
     subject: `${params.senderName} mentioned you in #${params.channelName}`,
@@ -75,8 +84,7 @@ function composeNotificationEmail(params: {
           View Message
         </a>
         <p style="color: #666; font-size: 12px; margin-top: 24px;">
-          You received this email because you were mentioned while offline.
-          <br/>To stop these notifications, update your preferences in Flack settings.
+          ${footerText}
         </p>
       </div>
     `,
@@ -84,25 +92,22 @@ function composeNotificationEmail(params: {
 }
 
 /**
- * Check if user should receive notification (extension point for future preferences).
+ * Check if user should receive notification based on their preferences.
  *
- * v1: Always returns true (all users with valid emails get notifications)
- *
- * Future extension: Query userPreferences table to check opt-out settings:
- * ```typescript
- * const prefs = await ctx.db
- *   .query("userPreferences")
- *   .withIndex("by_user", (q) => q.eq("userId", userId))
- *   .first();
- * return prefs?.mentionNotifications !== false;
- * ```
+ * Queries the userPreferences table to check if user has opted out of email notifications.
+ * Default behavior: If no preference exists, assume true (opt-out model).
  */
 async function shouldNotifyUser(
-  _ctx: MutationCtx,
-  _userId: Id<"users">
+  ctx: MutationCtx,
+  userId: Id<"users">
 ): Promise<boolean> {
-  // v1: Always notify users with valid emails
-  return true;
+  const preference = await ctx.db
+    .query("userPreferences")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .first();
+
+  // Default to true if no preference exists (opt-out model)
+  return preference?.emailNotifications ?? true;
 }
 
 /**
@@ -263,13 +268,50 @@ export const checkAndSendMentionEmail = internalMutation({
     const baseUrl = process.env.SITE_URL ?? "http://localhost:5173";
     const messageUrl = `${baseUrl}/channel/${channelId}?message=${messageId}`;
 
+    // Generate unsubscribe token for both footer link and headers
+    const unsubscribeToken = await generateUnsubscribeToken(mentionedUserId);
+
+    // Build frontend unsubscribe URL (for clickable link in email body)
+    // Points to /unsubscribe page in the SvelteKit frontend
+    const frontendUnsubscribeUrl = unsubscribeToken
+      ? `${baseUrl}/unsubscribe?token=${unsubscribeToken}`
+      : undefined;
+
     const { subject, html } = composeNotificationEmail({
       mentionedUserName: mentionedUser.name,
       senderName: sender.name,
       channelName: channel.name,
       messagePreview: message.body,
       messageUrl,
+      unsubscribeUrl: frontendUnsubscribeUrl,
     });
+
+    // Build headers array - only add unsubscribe headers if token generation succeeded
+    // Resend expects headers as array of {name, value} objects
+    const headers: { name: string; value: string }[] = [];
+    if (unsubscribeToken) {
+      // Use Convex HTTP endpoint for one-click unsubscribe
+      // Format: https://<deployment>.convex.site/unsubscribe?token=xxx
+      const convexSiteUrl = process.env.CONVEX_SITE_URL;
+      if (convexSiteUrl) {
+        const unsubscribeUrl = `${convexSiteUrl}/unsubscribe?token=${unsubscribeToken}`;
+        // RFC 8058: List-Unsubscribe header with URL
+        headers.push({ name: "List-Unsubscribe", value: `<${unsubscribeUrl}>` });
+        // RFC 8058: Required for one-click unsubscribe
+        headers.push({
+          name: "List-Unsubscribe-Post",
+          value: "List-Unsubscribe=One-Click",
+        });
+      } else {
+        console.log(
+          "[notifications] CONVEX_SITE_URL not set, skipping List-Unsubscribe headers"
+        );
+      }
+    } else {
+      console.log(
+        "[notifications] Could not generate unsubscribe token, skipping headers"
+      );
+    }
 
     // Send email via Resend
     const fromEmail = process.env.RESEND_EMAIL ?? "onboarding@resend.dev";
@@ -278,6 +320,7 @@ export const checkAndSendMentionEmail = internalMutation({
       to: mentionedUser.email,
       subject,
       html,
+      ...(headers.length > 0 && { headers }),
     });
 
     console.log(

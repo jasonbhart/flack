@@ -127,4 +127,12 @@ export default defineSchema({
     .index("by_session", ["sessionId"])
     .index("by_user", ["userId"])
     .index("by_updated", ["updated"]),
+
+  // User preferences for notification settings
+  // Separate table allows adding more preferences without schema migration
+  // Default behavior: if no record exists, assume emailNotifications: true (opt-out model)
+  userPreferences: defineTable({
+    userId: v.id("users"),
+    emailNotifications: v.boolean(), // true = send emails, false = opted out
+  }).index("by_user", ["userId"]),
 });

@@ -15,12 +15,14 @@ import type * as channelInvites from "../channelInvites.js";
 import type * as channelMembers from "../channelMembers.js";
 import type * as channels from "../channels.js";
 import type * as crons from "../crons.js";
+import type * as http from "../http.js";
 import type * as messages from "../messages.js";
 import type * as migrations from "../migrations.js";
 import type * as notifications from "../notifications.js";
 import type * as presence from "../presence.js";
 import type * as rateLimiter from "../rateLimiter.js";
 import type * as seed from "../seed.js";
+import type * as unsubscribe from "../unsubscribe.js";
 
 import type {
   ApiFromModules,
@@ -36,12 +38,14 @@ declare const fullApi: ApiFromModules<{
   channelMembers: typeof channelMembers;
   channels: typeof channels;
   crons: typeof crons;
+  http: typeof http;
   messages: typeof messages;
   migrations: typeof migrations;
   notifications: typeof notifications;
   presence: typeof presence;
   rateLimiter: typeof rateLimiter;
   seed: typeof seed;
+  unsubscribe: typeof unsubscribe;
 }>;
 
 /**
