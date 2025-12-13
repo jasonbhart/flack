@@ -460,6 +460,10 @@ export const logout = mutation({
   },
 });
 
+// Regex for valid mentionable names: starts with letter, alphanumeric + underscores/dots/dashes
+// Must match MENTION_PATTERN in messages.ts and messageParser.ts
+const VALID_NAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9_.-]*$/;
+
 /**
  * Update user profile.
  * Uses auth middleware - users can only update their own profile.
@@ -472,6 +476,12 @@ export const updateProfile = withAuthMutation({
     // Update authenticated user's profile
     const updates: { name?: string; nameLower?: string } = {};
     if (args.name) {
+      // Validate name is mentionable (no spaces, starts with letter)
+      if (!VALID_NAME_PATTERN.test(args.name)) {
+        throw new Error(
+          "Name must start with a letter and contain only letters, numbers, underscores, dots, or dashes"
+        );
+      }
       updates.name = args.name;
       updates.nameLower = args.name.toLowerCase();
     }

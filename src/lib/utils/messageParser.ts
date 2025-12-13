@@ -386,7 +386,8 @@ function parseUrlsAndMentions(
       });
     } else if (item.type === "mention") {
       const mentionMatch = item.match as ParsedMention;
-      const resolvedUserId = mentionMap?.[mentionMatch.username];
+      // Use lowercase for case-insensitive lookup (mentionMap keys are lowercase)
+      const resolvedUserId = mentionMap?.[mentionMatch.username.toLowerCase()];
       tokens.push({
         type: "mention",
         content: mentionMatch.raw,

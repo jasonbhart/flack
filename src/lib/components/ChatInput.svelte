@@ -1,6 +1,6 @@
 <script lang="ts">
   import { responsive } from "$lib/utils/responsive.svelte";
-  import { getAutocompleteContext, replaceMention } from "$lib/utils/mentionParser";
+  import { getAutocompleteContext, replaceMention } from "$lib/utils/messageParser";
   import MentionAutocomplete from "./MentionAutocomplete.svelte";
   import type { MentionableUser } from "$lib/types/mentions";
 

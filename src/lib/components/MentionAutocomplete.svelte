@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { MentionableUser } from "$lib/types/mentions";
-  import { matchesQuery } from "$lib/utils/mentionParser";
+  import { matchesQuery } from "$lib/utils/messageParser";
 
   interface Props {
     /** Users available to mention in this channel */

@@ -114,14 +114,15 @@ export const list = withAuthQuery({
       }
     }
 
-    // Attach mentionMap to each message
+    // Attach mentionMap to each message (lowercase keys for case-insensitive lookup)
     return messages.map((msg) => {
       const mentionMap: Record<string, string> = {};
       if (msg.mentions) {
         for (const userId of msg.mentions) {
           const userName = userIdToName[userId.toString()];
           if (userName) {
-            mentionMap[userName] = userId.toString();
+            // Use lowercase key for case-insensitive client-side lookup
+            mentionMap[userName.toLowerCase()] = userId.toString();
           }
         }
       }
