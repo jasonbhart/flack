@@ -1,0 +1,289 @@
+import { internalMutation } from "./_generated/server";
+import { v } from "convex/values";
+import { resend } from "./auth";
+import type { Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
+
+// Delay before checking if user is still offline (4 hours)
+export const MENTION_NOTIFICATION_DELAY_MS = 4 * 60 * 60 * 1000;
+
+/**
+ * Escape HTML entities to prevent XSS in email content.
+ */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+/**
+ * Check if a user has been offline since the mention timestamp.
+ * Returns true if the user should receive a notification.
+ */
+async function isUserOfflineSinceMention(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+  mentionedAt: number
+): Promise<boolean> {
+  // Find all presence records for this user (any channel/session)
+  const presenceRecords = await ctx.db
+    .query("presence")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+
+  if (presenceRecords.length === 0) {
+    // No presence records = never been online = notify
+    return true;
+  }
+
+  // Find the most recent activity across all sessions
+  const mostRecentActivity = Math.max(...presenceRecords.map((p) => p.updated));
+
+  // User is "offline since mention" if their last activity was before the mention
+  return mostRecentActivity < mentionedAt;
+}
+
+/**
+ * Compose the notification email content.
+ */
+function composeNotificationEmail(params: {
+  mentionedUserName: string;
+  senderName: string;
+  channelName: string;
+  messagePreview: string;
+  messageUrl: string;
+}): { subject: string; html: string } {
+  const escapedPreview = escapeHtml(params.messagePreview);
+  const truncatedPreview =
+    escapedPreview.length > 200
+      ? escapedPreview.substring(0, 200) + "..."
+      : escapedPreview;
+
+  return {
+    subject: `${params.senderName} mentioned you in #${params.channelName}`,
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #3B82F6;">You were mentioned in Flack</h2>
+        <p><strong>${escapeHtml(params.senderName)}</strong> mentioned you in <strong>#${escapeHtml(params.channelName)}</strong>:</p>
+        <div style="background: #f5f5f5; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #3B82F6;">
+          <p style="margin: 0; color: #333;">${truncatedPreview}</p>
+        </div>
+        <a href="${params.messageUrl}" style="display: inline-block; background: #3B82F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
+          View Message
+        </a>
+        <p style="color: #666; font-size: 12px; margin-top: 24px;">
+          You received this email because you were mentioned while offline.
+          <br/>To stop these notifications, update your preferences in Flack settings.
+        </p>
+      </div>
+    `,
+  };
+}
+
+/**
+ * Check if user should receive notification (extension point for future preferences).
+ *
+ * v1: Always returns true (all users with valid emails get notifications)
+ *
+ * Future extension: Query userPreferences table to check opt-out settings:
+ * ```typescript
+ * const prefs = await ctx.db
+ *   .query("userPreferences")
+ *   .withIndex("by_user", (q) => q.eq("userId", userId))
+ *   .first();
+ * return prefs?.mentionNotifications !== false;
+ * ```
+ */
+async function shouldNotifyUser(
+  _ctx: MutationCtx,
+  _userId: Id<"users">
+): Promise<boolean> {
+  // v1: Always notify users with valid emails
+  return true;
+}
+
+/**
+ * Check if this notification should be sent (consolidation logic).
+ * Only the first scheduled notification for a user's offline period in a channel should send.
+ * Later scheduled notifications detect they're redundant and skip.
+ *
+ * Consolidation is per-channel: if a user is mentioned multiple times in the same channel
+ * while offline, only the first mention triggers an email for that channel.
+ * Mentions in different channels each trigger their own email.
+ */
+async function shouldSendNotification(
+  ctx: MutationCtx,
+  mentionedUserId: Id<"users">,
+  messageId: Id<"messages">,
+  channelId: Id<"channels">,
+  mentionedAt: number
+): Promise<boolean> {
+  // Find when user was last online
+  const presenceRecords = await ctx.db
+    .query("presence")
+    .withIndex("by_user", (q) => q.eq("userId", mentionedUserId))
+    .collect();
+
+  const lastOnline =
+    presenceRecords.length > 0
+      ? Math.max(...presenceRecords.map((p) => p.updated))
+      : 0;
+
+  // Query messages in THIS CHANNEL created after user went offline
+  // Server-side filter prevents loading entire channel history into memory
+  const recentMessages = await ctx.db
+    .query("messages")
+    .withIndex("by_channel", (q) => q.eq("channelId", channelId))
+    .filter((q) => q.gt(q.field("_creationTime"), lastOnline))
+    .order("asc")
+    .collect();
+
+  // Filter to messages that mention this user
+  const pendingMentions = recentMessages.filter((msg) => {
+    if (!msg.mentions) return false;
+    return msg.mentions.some((id) => id === mentionedUserId);
+  });
+
+  if (pendingMentions.length === 0) {
+    // No pending mentions found (edge case - message may have been deleted)
+    return true;
+  }
+
+  // Only send if this is the FIRST (oldest) mention since going offline in this channel
+  const firstMention = pendingMentions[0];
+  return firstMention._id === messageId;
+}
+
+/**
+ * Internal mutation to check if a mentioned user is offline and send email notification.
+ * Called by the scheduler 4 hours after a mention is created.
+ */
+export const checkAndSendMentionEmail = internalMutation({
+  args: {
+    messageId: v.id("messages"),
+    mentionedUserId: v.id("users"),
+    channelId: v.id("channels"),
+    mentionedAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const { messageId, mentionedUserId, channelId, mentionedAt } = args;
+
+    // Check if message still exists (may have been deleted)
+    const message = await ctx.db.get(messageId);
+    if (!message) {
+      console.log(
+        `[notifications] Skipping notification: message ${messageId} deleted`
+      );
+      return { sent: false, reason: "message_deleted" };
+    }
+
+    // Check if mention still exists (message may have been edited to remove mention)
+    if (!message.mentions?.includes(mentionedUserId)) {
+      console.log(
+        `[notifications] Skipping notification: mention removed from message ${messageId}`
+      );
+      return { sent: false, reason: "mention_removed" };
+    }
+
+    // Check if channel still exists
+    const channel = await ctx.db.get(channelId);
+    if (!channel) {
+      console.log(
+        `[notifications] Skipping notification: channel ${channelId} deleted`
+      );
+      return { sent: false, reason: "channel_deleted" };
+    }
+
+    // Get sender info
+    const sender = await ctx.db.get(message.userId);
+    if (!sender) {
+      console.log(
+        `[notifications] Skipping notification: sender ${message.userId} not found`
+      );
+      return { sent: false, reason: "sender_not_found" };
+    }
+
+    // Get mentioned user info
+    const mentionedUser = await ctx.db.get(mentionedUserId);
+    if (!mentionedUser) {
+      console.log(
+        `[notifications] Skipping notification: user ${mentionedUserId} not found`
+      );
+      return { sent: false, reason: "user_not_found" };
+    }
+
+    // Check if user has email
+    if (!mentionedUser.email || mentionedUser.email.trim() === "") {
+      console.log(
+        `[notifications] Skipping notification: user ${mentionedUserId} has no email`
+      );
+      return { sent: false, reason: "no_email" };
+    }
+
+    // Check user preferences (extension point)
+    if (!(await shouldNotifyUser(ctx, mentionedUserId))) {
+      console.log(
+        `[notifications] Skipping notification: user ${mentionedUserId} opted out`
+      );
+      return { sent: false, reason: "user_opted_out" };
+    }
+
+    // Check if user is still offline since the mention
+    const isOffline = await isUserOfflineSinceMention(
+      ctx,
+      mentionedUserId,
+      mentionedAt
+    );
+    if (!isOffline) {
+      console.log(
+        `[notifications] Skipping notification: user ${mentionedUserId} came online`
+      );
+      return { sent: false, reason: "user_online" };
+    }
+
+    // Check consolidation - only send if this is the first pending mention in this channel
+    const shouldSend = await shouldSendNotification(
+      ctx,
+      mentionedUserId,
+      messageId,
+      channelId,
+      mentionedAt
+    );
+    if (!shouldSend) {
+      console.log(
+        `[notifications] Skipping notification: consolidated with earlier mention`
+      );
+      return { sent: false, reason: "consolidated" };
+    }
+
+    // Build email content
+    const baseUrl = process.env.SITE_URL ?? "http://localhost:5173";
+    const messageUrl = `${baseUrl}/channel/${channelId}?message=${messageId}`;
+
+    const { subject, html } = composeNotificationEmail({
+      mentionedUserName: mentionedUser.name,
+      senderName: sender.name,
+      channelName: channel.name,
+      messagePreview: message.body,
+      messageUrl,
+    });
+
+    // Send email via Resend
+    const fromEmail = process.env.RESEND_EMAIL ?? "onboarding@resend.dev";
+    await resend.sendEmail(ctx, {
+      from: `Flack <${fromEmail}>`,
+      to: mentionedUser.email,
+      subject,
+      html,
+    });
+
+    console.log(
+      `[notifications] Sent mention notification to ${mentionedUser.email} for message ${messageId}`
+    );
+
+    return { sent: true, email: mentionedUser.email };
+  },
+});

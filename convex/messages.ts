@@ -2,6 +2,8 @@ import { v } from "convex/values";
 import { withAuthQuery, withAuthMutation } from "./authMiddleware";
 import { checkMembership } from "./channelMembers";
 import { checkRateLimit } from "./rateLimiter";
+import { internal } from "./_generated/api";
+import { MENTION_NOTIFICATION_DELAY_MS } from "./notifications";
 import type { Id } from "./_generated/dataModel";
 
 // Rate limits for message sending (per user)
@@ -221,6 +223,22 @@ export const send = withAuthMutation({
       mentions: validMentions.length > 0 ? validMentions : undefined,
       specialMentions: specialMentions.length > 0 ? specialMentions : undefined,
     });
+
+    // Schedule notification checks for each mentioned user (4 hours from now)
+    // The scheduled function will check if the user is still offline before sending
+    const mentionedAt = Date.now();
+    for (const mentionedUserId of validMentions) {
+      await ctx.scheduler.runAfter(
+        MENTION_NOTIFICATION_DELAY_MS,
+        internal.notifications.checkAndSendMentionEmail,
+        {
+          messageId,
+          mentionedUserId,
+          channelId: args.channelId,
+          mentionedAt,
+        }
+      );
+    }
 
     return messageId;
   },
