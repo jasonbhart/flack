@@ -700,9 +700,9 @@
 
 <!-- Sidebar content (shared between desktop aside and mobile drawer) -->
 {#snippet sidebarContent()}
-  <h2 class="text-lg font-bold mb-4">Flack</h2>
+  <h2 class="text-lg font-bold mb-4 px-1">Flack</h2>
 
-  <div class="text-xs text-[var(--text-secondary)] uppercase mb-2">
+  <div class="text-xs text-[var(--text-secondary)] uppercase tracking-wide mb-2 px-1">
     Channels
   </div>
 
@@ -737,17 +737,17 @@
   <div class="flex-1"></div>
 
   <!-- User Info & Actions -->
-  <div class="border-t border-[var(--border-default)] pt-4 mt-4 space-y-2">
+  <div class="border-t border-[var(--border-default)] pt-4 mt-4 space-y-1.5">
     {#if authStore.isLoading}
       <!-- Loading skeleton for user info -->
-      <div class="px-2 py-1 animate-pulse" aria-hidden="true">
+      <div class="px-2.5 py-1.5 animate-pulse" aria-hidden="true">
         <div class="h-4 w-24 rounded bg-[var(--bg-tertiary)] mb-1.5"></div>
         <div class="h-3 w-32 rounded bg-[var(--bg-tertiary)]"></div>
       </div>
       <div class="h-9 rounded bg-[var(--bg-tertiary)] animate-pulse" aria-hidden="true"></div>
     {:else if authStore.user}
-      <div class="px-2 py-1">
-        <div class="text-sm font-medium truncate">{authStore.user.name}</div>
+      <div class="px-2.5 py-1.5">
+        <div class="text-[0.9375rem] font-medium truncate">{authStore.user.name}</div>
         <div class="text-xs text-[var(--text-tertiary)] truncate">
           {authStore.user.email}
         </div>
@@ -755,14 +755,14 @@
       <button
         onclick={handleLogout}
         aria-label="Sign out"
-        class="w-full flex items-center gap-2 px-3 py-2 rounded text-sm text-[var(--text-secondary)] hover:bg-red-500/10 hover:text-red-500 transition-colors"
+        class="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-[0.9375rem] text-[var(--text-secondary)] hover:bg-red-500/10 hover:text-red-500 transition-colors"
       >
         Sign out
       </button>
     {:else}
       <a
         href="/auth/login"
-        class="block w-full text-center px-3 py-2 bg-volt text-white rounded text-sm hover:bg-volt/90 transition-colors"
+        class="block w-full text-center px-2.5 py-2 bg-volt text-white rounded-md text-[0.9375rem] hover:bg-volt/90 transition-colors"
       >
         Sign in
       </a>
@@ -773,7 +773,7 @@
       onclick={() => settingsOpen = !settingsOpen}
       aria-label="Toggle settings"
       aria-expanded={settingsOpen}
-      class="w-full flex items-center gap-2 px-3 py-2 rounded text-sm text-[var(--text-secondary)] hover:bg-volt/10 hover:text-volt transition-colors"
+      class="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-[0.9375rem] text-[var(--text-secondary)] hover:bg-volt/10 hover:text-volt transition-colors"
     >
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -849,7 +849,7 @@
     <aside
       role="complementary"
       aria-label="Sidebar"
-      class="hidden md:flex w-64 bg-[var(--bg-secondary)] p-4 flex-col"
+      class="hidden md:flex w-64 min-w-[14rem] max-w-[18rem] bg-[var(--bg-secondary)] px-3 py-4 flex-col overflow-y-auto"
     >
       {@render sidebarContent()}
     </aside>

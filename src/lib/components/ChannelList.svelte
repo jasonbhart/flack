@@ -121,9 +121,9 @@
   }
 </script>
 
-<div class="flex flex-col gap-2">
+<div class="flex flex-col gap-3">
   <!-- Channel list -->
-  <nav role="navigation" aria-label="Channel list" class="flex flex-col gap-1">
+  <nav role="navigation" aria-label="Channel list" class="flex flex-col gap-0.5">
     {#each channels as channel, index (channel._id)}
       {@const unreadDisplay = getDisplayCount(channel._id)}
       {@const mentionDisplay = getMentionDisplay(channel._id)}
@@ -135,23 +135,23 @@
         aria-label="Channel {displayName}{mentionDisplay ? `, ${mentionDisplay} mentions` : ''}{unreadDisplay ? `, ${unreadDisplay} unread messages` : ''}"
         aria-current={channel._id === activeChannelId ? "page" : undefined}
         tabindex={index === focusedIndex ? 0 : -1}
-        class="flex items-center justify-between text-left py-1 px-2 rounded text-sm transition-colors
+        class="flex items-center justify-between text-left py-1.5 px-2.5 rounded-md transition-colors
           focus:outline-none focus:ring-2 focus:ring-volt focus:ring-offset-1
           {channel._id === activeChannelId
             ? 'bg-volt/10 font-bold text-volt'
             : 'text-[var(--text-secondary)] hover:bg-ink-700/50'}"
       >
-        <span class="truncate"># {displayName}</span>
-        <span class="flex items-center gap-1 shrink-0">
+        <span class="truncate min-w-0 text-[0.9375rem] leading-snug"># {displayName}</span>
+        <span class="flex items-center gap-1.5 shrink-0 ml-2">
           {#if mentionDisplay}
             <!-- Mention badge: red with @ prefix for high priority -->
-            <span class="ml-2 min-w-[1.25rem] h-5 flex items-center justify-center px-1.5 text-xs font-bold bg-red-500 text-white rounded-full" title="{mentionDisplay} mentions">
+            <span class="min-w-[1.375rem] py-0.5 px-1.5 flex items-center justify-center text-[0.6875rem] font-bold bg-red-500 text-white rounded-full leading-none" title="{mentionDisplay} mentions">
               @{mentionDisplay}
             </span>
           {/if}
           {#if unreadDisplay && !mentionDisplay}
             <!-- Unread badge: only show if no mentions (mentions are more important) -->
-            <span class="ml-2 min-w-[1.25rem] h-5 flex items-center justify-center px-1.5 text-xs font-bold bg-volt text-white rounded-full">
+            <span class="min-w-[1.375rem] py-0.5 px-1.5 flex items-center justify-center text-[0.6875rem] font-bold bg-volt text-white rounded-full leading-none">
               {unreadDisplay}
             </span>
           {/if}
@@ -163,10 +163,10 @@
   <!-- New Channel button -->
   <button
     onclick={() => showNewChannelModal = true}
-    class="flex items-center gap-2 py-1 px-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-ink-700/50 rounded transition-colors"
+    class="flex items-center gap-2 py-1.5 px-2.5 text-[0.9375rem] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-ink-700/50 rounded-md transition-colors"
     aria-label="Create new channel"
   >
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
     </svg>
     <span>New Channel</span>

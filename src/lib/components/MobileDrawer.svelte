@@ -39,7 +39,7 @@
   <!-- Drawer -->
   <FocusTrap active={isOpen}>
     <div
-      class="fixed top-0 left-0 z-50 h-full w-64 bg-[var(--bg-secondary)] shadow-xl
+      class="fixed top-0 left-0 z-50 h-full w-[17rem] max-w-[85vw] bg-[var(--bg-secondary)] shadow-xl
              transform transition-transform duration-200 ease-out
              {isOpen ? 'translate-x-0' : '-translate-x-full'}"
       role="dialog"
@@ -71,7 +71,7 @@
       </button>
 
       <!-- Drawer content -->
-      <div class="h-full overflow-y-auto p-4 pt-12">
+      <div class="h-full overflow-y-auto px-3 py-4 pt-14">
         {@render children()}
       </div>
     </div>
