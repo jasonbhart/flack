@@ -37,6 +37,11 @@
   --border-default: var(--color-paper-200);
   /* Pending message opacity - 0.7 for better contrast than 0.6 */
   --pending-opacity: 0.7;
+  /* Code block theming - light mode uses subtle gray */
+  --code-bg: #F1F5F9; /* paper-100 */
+  --code-header-bg: #E2E8F0; /* paper-200 */
+  --code-border: #CBD5E1; /* slate-300 */
+  --code-text: #1E293B; /* paper-800 */
 }
 
 .dark {
@@ -49,6 +54,11 @@
   --text-tertiary: #94A3B8; /* slate-400: 5.5:1 on ink-900 */
   --border-default: var(--color-ink-700);
   --pending-opacity: 0.7;
+  /* Code block theming - dark mode */
+  --code-bg: #0F172A; /* ink-900 */
+  --code-header-bg: rgba(30, 41, 59, 0.5); /* ink-800/50 */
+  --code-border: #334155; /* ink-700 */
+  --code-text: #F1F5F9; /* ink-100 */
 }
 
 /* Base Styles */

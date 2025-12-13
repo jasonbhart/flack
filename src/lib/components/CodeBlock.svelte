@@ -138,11 +138,13 @@
 </script>
 
 <div
-  class="my-2 rounded-md border border-ink-700 bg-ink-900 overflow-hidden text-sm"
+  class="my-2 rounded-md border overflow-hidden text-sm"
+  style="background-color: var(--code-bg); border-color: var(--code-border);"
 >
   <!-- Header with language and copy button (always shown for consistency) -->
   <div
-      class="flex justify-between items-center px-3 py-1.5 border-b border-ink-700 bg-ink-800/50"
+      class="flex justify-between items-center px-3 py-1.5 border-b"
+      style="background-color: var(--code-header-bg); border-color: var(--code-border);"
     >
       <span class="text-xs text-[var(--text-tertiary)] font-mono">
         {displayLanguage() || "Code"}
@@ -187,70 +189,123 @@
   <div class="p-3 overflow-x-auto">
     {#if highlightedCode}
       <pre
-        class="font-mono text-[var(--text-primary)] whitespace-pre"><code class="hljs">{@html highlightedCode}</code></pre>
+        class="font-mono whitespace-pre" style="color: var(--code-text);"><code class="hljs">{@html highlightedCode}</code></pre>
     {:else}
       <pre
-        class="font-mono text-[var(--text-primary)] whitespace-pre">{code}</pre>
+        class="font-mono whitespace-pre" style="color: var(--code-text);">{code}</pre>
     {/if}
   </div>
 </div>
 
 <style>
-  /* Import highlight.js theme - using a dark theme that matches our design */
+  /* Highlight.js theme - adapts to light/dark mode */
   :global(.hljs) {
-    color: var(--text-primary);
+    color: var(--code-text);
     background: transparent;
   }
 
-  :global(.hljs-keyword),
-  :global(.hljs-selector-tag),
-  :global(.hljs-title),
-  :global(.hljs-section),
-  :global(.hljs-doctag),
-  :global(.hljs-name),
-  :global(.hljs-strong) {
+  /* Dark mode syntax colors */
+  :global(.dark .hljs-keyword),
+  :global(.dark .hljs-selector-tag),
+  :global(.dark .hljs-title),
+  :global(.dark .hljs-section),
+  :global(.dark .hljs-doctag),
+  :global(.dark .hljs-name),
+  :global(.dark .hljs-strong) {
     color: #c678dd;
     font-weight: inherit;
   }
 
-  :global(.hljs-string),
-  :global(.hljs-title.class_),
-  :global(.hljs-title.class_.inherited__),
-  :global(.hljs-title.function_),
-  :global(.hljs-attr),
-  :global(.hljs-attribute),
-  :global(.hljs-regexp),
-  :global(.hljs-link) {
+  :global(.dark .hljs-string),
+  :global(.dark .hljs-title.class_),
+  :global(.dark .hljs-title.class_.inherited__),
+  :global(.dark .hljs-title.function_),
+  :global(.dark .hljs-attr),
+  :global(.dark .hljs-attribute),
+  :global(.dark .hljs-regexp),
+  :global(.dark .hljs-link) {
     color: #98c379;
   }
 
-  :global(.hljs-literal),
-  :global(.hljs-number),
-  :global(.hljs-built_in),
-  :global(.hljs-type),
-  :global(.hljs-params),
-  :global(.hljs-meta),
-  :global(.hljs-symbol),
-  :global(.hljs-bullet) {
+  :global(.dark .hljs-literal),
+  :global(.dark .hljs-number),
+  :global(.dark .hljs-built_in),
+  :global(.dark .hljs-type),
+  :global(.dark .hljs-params),
+  :global(.dark .hljs-meta),
+  :global(.dark .hljs-symbol),
+  :global(.dark .hljs-bullet) {
     color: #d19a66;
   }
 
-  :global(.hljs-comment),
-  :global(.hljs-quote),
-  :global(.hljs-deletion),
-  :global(.hljs-meta .hljs-doctag) {
+  :global(.dark .hljs-comment),
+  :global(.dark .hljs-quote),
+  :global(.dark .hljs-deletion),
+  :global(.dark .hljs-meta .hljs-doctag) {
     color: #5c6370;
     font-style: italic;
   }
 
-  :global(.hljs-variable),
-  :global(.hljs-template-variable) {
+  :global(.dark .hljs-variable),
+  :global(.dark .hljs-template-variable) {
     color: #e06c75;
   }
 
-  :global(.hljs-addition) {
+  :global(.dark .hljs-addition) {
     color: #98c379;
     background-color: rgba(152, 195, 121, 0.1);
+  }
+
+  /* Light mode syntax colors */
+  :global(:not(.dark) .hljs-keyword),
+  :global(:not(.dark) .hljs-selector-tag),
+  :global(:not(.dark) .hljs-title),
+  :global(:not(.dark) .hljs-section),
+  :global(:not(.dark) .hljs-doctag),
+  :global(:not(.dark) .hljs-name),
+  :global(:not(.dark) .hljs-strong) {
+    color: #8250df;
+    font-weight: inherit;
+  }
+
+  :global(:not(.dark) .hljs-string),
+  :global(:not(.dark) .hljs-title.class_),
+  :global(:not(.dark) .hljs-title.class_.inherited__),
+  :global(:not(.dark) .hljs-title.function_),
+  :global(:not(.dark) .hljs-attr),
+  :global(:not(.dark) .hljs-attribute),
+  :global(:not(.dark) .hljs-regexp),
+  :global(:not(.dark) .hljs-link) {
+    color: #0a3069;
+  }
+
+  :global(:not(.dark) .hljs-literal),
+  :global(:not(.dark) .hljs-number),
+  :global(:not(.dark) .hljs-built_in),
+  :global(:not(.dark) .hljs-type),
+  :global(:not(.dark) .hljs-params),
+  :global(:not(.dark) .hljs-meta),
+  :global(:not(.dark) .hljs-symbol),
+  :global(:not(.dark) .hljs-bullet) {
+    color: #953800;
+  }
+
+  :global(:not(.dark) .hljs-comment),
+  :global(:not(.dark) .hljs-quote),
+  :global(:not(.dark) .hljs-deletion),
+  :global(:not(.dark) .hljs-meta .hljs-doctag) {
+    color: #6e7781;
+    font-style: italic;
+  }
+
+  :global(:not(.dark) .hljs-variable),
+  :global(:not(.dark) .hljs-template-variable) {
+    color: #cf222e;
+  }
+
+  :global(:not(.dark) .hljs-addition) {
+    color: #116329;
+    background-color: rgba(46, 160, 67, 0.1);
   }
 
   :global(.hljs-emphasis) {

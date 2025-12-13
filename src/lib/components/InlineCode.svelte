@@ -17,7 +17,8 @@
 </script>
 
 <code
-  class="font-mono text-[0.9em] bg-ink-800/50 px-1.5 py-0.5 rounded text-[var(--text-primary)]"
+  class="font-mono text-[0.9em] px-1.5 py-0.5 rounded"
+  style="background-color: var(--code-header-bg); color: var(--code-text);"
 >
   {code}
 </code>
