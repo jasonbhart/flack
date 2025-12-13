@@ -191,7 +191,13 @@ export const sendMagicLink = mutation({
 });
 
 /**
- * Verify a magic link token and create a session
+ * Verify a magic link token and create a session.
+ *
+ * Error messages are designed to be user-friendly while not revealing
+ * sensitive information. We distinguish between:
+ * - Link already used (common case when clicking link twice)
+ * - Link expired (15 minute window passed)
+ * - Invalid link (token not found - could be corrupted or fake)
  */
 export const verifyMagicLink = mutation({
   args: {
@@ -207,19 +213,20 @@ export const verifyMagicLink = mutation({
       .withIndex("by_token", (q) => q.eq("token", tokenHash))
       .first();
 
-    // Use generic error message for all failure cases to prevent token enumeration
-    const genericError = "Invalid or expired link";
-
+    // Token not found - could be fake, corrupted, or already cleaned up
     if (!authToken) {
-      throw new Error(genericError);
+      throw new Error("Invalid or expired link");
     }
 
+    // Token already used - common case when user clicks link twice
+    // This is a friendly error since it's expected behavior
     if (authToken.used) {
-      throw new Error(genericError);
+      throw new Error("This link has already been used. Each magic link can only be used once.");
     }
 
+    // Token expired - 15 minute window passed
     if (authToken.expiresAt < Date.now()) {
-      throw new Error(genericError);
+      throw new Error("This link has expired. Magic links are valid for 15 minutes.");
     }
 
     // Mark token as used
