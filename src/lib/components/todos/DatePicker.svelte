@@ -5,9 +5,10 @@
     value: number | undefined;
     onchange: (timestamp: number) => void;
     onclear: () => void;
+    compact?: boolean;
   }
 
-  let { value, onchange, onclear }: Props = $props();
+  let { value, onchange, onclear, compact = false }: Props = $props();
 
   // Reference to the hidden date input
   let dateInputRef: HTMLInputElement | undefined = $state();
@@ -60,10 +61,13 @@
   <button
     type="button"
     onclick={openDatePicker}
-    class="flex items-center gap-1 px-2 py-1 min-h-[2.75rem] text-sm rounded border border-[var(--border-default)] hover:border-[var(--border-hover)] transition-colors {formatted
-      ? getDueDateClasses(formatted.status)
-      : 'text-[var(--text-tertiary)]'}"
+    class="flex items-center gap-1 text-xs rounded transition-colors
+           {compact
+             ? 'px-1.5 py-1 hover:bg-[var(--bg-tertiary)]'
+             : 'px-2 py-1 min-h-[2.75rem] border border-[var(--border-default)] hover:border-[var(--border-hover)]'}
+           {formatted ? getDueDateClasses(formatted.status) : 'text-[var(--text-tertiary)]'}"
     aria-haspopup="dialog"
+    title={formatted ? formatted.text : "Add due date"}
   >
     <svg
       class="w-4 h-4 flex-shrink-0"
@@ -80,7 +84,7 @@
       />
     </svg>
     <span class="whitespace-nowrap">
-      {formatted ? formatted.text : "Add date"}
+      {formatted ? formatted.text : (compact ? "" : "Add date")}
     </span>
   </button>
 
@@ -89,10 +93,11 @@
     <button
       type="button"
       onclick={handleClear}
-      class="ml-1 p-1 min-w-[2.75rem] min-h-[2.75rem] flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+      class="ml-0.5 p-1 flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors
+             {compact ? '' : 'min-w-[2.75rem] min-h-[2.75rem]'}"
       aria-label="Clear due date"
     >
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           stroke-linecap="round"
           stroke-linejoin="round"

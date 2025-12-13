@@ -6,9 +6,10 @@
     value: Id<"users"> | undefined;
     members: TodoMember[];
     onchange: (userId: Id<"users"> | undefined) => void;
+    compact?: boolean;
   }
 
-  let { value, members, onchange }: Props = $props();
+  let { value, members, onchange, compact = false }: Props = $props();
 
   // Dropdown state
   let isOpen = $state(false);
@@ -71,9 +72,13 @@
     type="button"
     onclick={toggleDropdown}
     onkeydown={handleKeydown}
-    class="flex items-center gap-2 px-2 py-1 min-h-[2.75rem] text-sm rounded border border-[var(--border-default)] hover:border-[var(--border-hover)] transition-colors"
+    class="flex items-center gap-1.5 text-xs rounded transition-colors
+           {compact
+             ? 'px-1.5 py-1 hover:bg-[var(--bg-tertiary)]'
+             : 'px-2 py-1 min-h-[2.75rem] border border-[var(--border-default)] hover:border-[var(--border-hover)]'}"
     aria-haspopup="listbox"
     aria-expanded={isOpen}
+    title={selectedMember ? selectedMember.name : "Assign owner"}
   >
     {#if selectedMember}
       {#if selectedMember.avatarUrl}
@@ -84,14 +89,20 @@
         />
       {:else}
         <div
-          class="w-5 h-5 rounded-full bg-volt/20 text-volt flex items-center justify-center text-xs font-medium"
+          class="w-5 h-5 rounded-full bg-volt/20 text-volt flex items-center justify-center text-[10px] font-medium"
         >
           {getInitials(selectedMember.name)}
         </div>
       {/if}
-      <span class="text-[var(--text-primary)] whitespace-nowrap">
-        {selectedMember.name}
-      </span>
+      {#if !compact}
+        <span class="text-[var(--text-primary)] whitespace-nowrap text-sm">
+          {selectedMember.name}
+        </span>
+      {:else}
+        <span class="text-[var(--text-secondary)] max-w-[80px] truncate">
+          {selectedMember.name}
+        </span>
+      {/if}
     {:else}
       <svg
         class="w-4 h-4 text-[var(--text-tertiary)]"
@@ -107,22 +118,26 @@
           d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
         />
       </svg>
-      <span class="text-[var(--text-tertiary)] whitespace-nowrap">Assign</span>
+      {#if !compact}
+        <span class="text-[var(--text-tertiary)] whitespace-nowrap text-sm">Assign</span>
+      {/if}
     {/if}
-    <svg
-      class="w-4 h-4 text-[var(--text-tertiary)] ml-auto"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <path
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        stroke-width="2"
-        d="M19 9l-7 7-7-7"
-      />
-    </svg>
+    {#if !compact}
+      <svg
+        class="w-4 h-4 text-[var(--text-tertiary)] ml-auto"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M19 9l-7 7-7-7"
+        />
+      </svg>
+    {/if}
   </button>
 
   <!-- Dropdown menu -->
@@ -131,7 +146,7 @@
       bind:this={dropdownRef}
       role="listbox"
       aria-label="Select owner"
-      class="absolute z-50 mt-1 w-full min-w-[180px] max-h-60 overflow-auto bg-[var(--bg-secondary)] border border-[var(--border-default)] rounded-lg shadow-lg"
+      class="absolute z-50 mt-1 min-w-[180px] max-h-60 overflow-auto bg-[var(--bg-secondary)] border border-[var(--border-default)] rounded-lg shadow-lg"
     >
       <!-- Unassigned option -->
       <button
