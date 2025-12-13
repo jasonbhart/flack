@@ -17,7 +17,7 @@
   // Only query if user is authenticated
   const emailPrefQuery = useQuery(
     api.unsubscribe.getEmailNotificationPreference,
-    () => (authStore.isAuthenticated ? {} : "skip")
+    () => (authStore.sessionToken ? { sessionToken: authStore.sessionToken } : "skip")
   );
   let emailNotificationsEnabled = $derived(emailPrefQuery.data ?? true);
   let emailPrefLoading = $state(false);
@@ -46,6 +46,7 @@
     emailPrefLoading = true;
     try {
       await client.mutation(api.unsubscribe.setEmailNotifications, {
+        sessionToken: authStore.sessionToken!,
         enabled: target.checked,
       });
     } catch (error) {
@@ -142,7 +143,7 @@
       </label>
 
       <!-- Email notifications toggle (separate from browser notifications) -->
-      {#if authStore.isAuthenticated}
+      {#if authStore.sessionToken}
         <div class="pt-3 mt-3 border-t border-ink-700">
           <label class="flex items-center justify-between cursor-pointer">
             <div>
