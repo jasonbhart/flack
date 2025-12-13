@@ -137,14 +137,18 @@ async function shouldSendNotification(
       ? Math.max(...presenceRecords.map((p) => p.updated))
       : 0;
 
-  // Query messages in THIS CHANNEL created after user went offline
-  // Server-side filter prevents loading entire channel history into memory
+  // Query messages in THIS CHANNEL created after user went offline.
+  // Convex automatically appends _creationTime to every index, so the by_channel
+  // index is effectively ["channelId", "_creationTime"]. This allows efficient
+  // range queries on _creationTime after matching channelId.
+  // See: https://docs.convex.dev/database/reading-data/indexes
   const recentMessages = await ctx.db
     .query("messages")
-    .withIndex("by_channel", (q) => q.eq("channelId", channelId))
-    .filter((q) => q.gt(q.field("_creationTime"), lastOnline))
+    .withIndex("by_channel", (q) =>
+      q.eq("channelId", channelId).gt("_creationTime", lastOnline)
+    )
     .order("asc")
-    .collect();
+    .take(500);
 
   // Filter to messages that mention this user
   const pendingMentions = recentMessages.filter((msg) => {
